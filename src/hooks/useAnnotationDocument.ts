@@ -33,9 +33,12 @@ export function useAnnotationDocument() {
         return { ...prev, present: nextPresent };
       }
 
-      // Actions like SELECT_ANNOTATION or SET_ACTIVE_TOOL don't need undo/redo steps
+      // Actions like SELECT_ANNOTATION, SET_ACTIVE_TOOL, SET_ACTIVE_COLOR don't need undo/redo steps
       const isTransient =
-        action.type === 'SELECT_ANNOTATION' || action.type === 'SET_ACTIVE_TOOL';
+        action.type === 'SELECT_ANNOTATION' ||
+        action.type === 'SET_ACTIVE_TOOL' ||
+        action.type === 'SET_ACTIVE_COLOR' ||
+        action.type === 'SET_ACTIVE_STROKE_WIDTH';
 
       if (isTransient) {
         return { ...prev, present: nextPresent };
@@ -78,6 +81,20 @@ export function useAnnotationDocument() {
   const setActiveTool = useCallback(
     (tool: AnnotationTool) => {
       dispatch({ type: 'SET_ACTIVE_TOOL', payload: tool }, false);
+    },
+    [dispatch]
+  );
+
+  const setActiveColor = useCallback(
+    (color: string) => {
+      dispatch({ type: 'SET_ACTIVE_COLOR', payload: color }, false);
+    },
+    [dispatch]
+  );
+
+  const setActiveStrokeWidth = useCallback(
+    (strokeWidth: number) => {
+      dispatch({ type: 'SET_ACTIVE_STROKE_WIDTH', payload: strokeWidth }, false);
     },
     [dispatch]
   );
@@ -135,6 +152,8 @@ export function useAnnotationDocument() {
     clearImage,
     setTitle,
     setActiveTool,
+    setActiveColor,
+    setActiveStrokeWidth,
     selectAnnotation,
     addAnnotation,
     updateAnnotation,

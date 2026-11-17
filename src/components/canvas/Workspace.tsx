@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type DragEvent } from 'react';
+import type { AnnotationTool, RectangleAnnotation } from '../../types/annotation';
 import type { AnnotationDocument } from '../../types/document';
 import type { ViewportState } from '../../types/viewport';
 import { IconUpload } from '../common/Icons';
@@ -16,7 +17,11 @@ interface WorkspaceProps {
   onWheel: (e: React.WheelEvent<HTMLElement>, containerRect: DOMRect) => void;
   onUploadFile: (file: File) => void;
   onTrySample: () => void;
+  onSelectTool: (tool: AnnotationTool) => void;
+  onSelectColor: (color: string) => void;
+  onSelectStrokeWidth: (width: number) => void;
   onSelectAnnotation: (id: string | null) => void;
+  onCommitAnnotation: (annotation: RectangleAnnotation) => void;
   onFitToScreen: (containerDims: { width: number; height: number }) => void;
   isLoading?: boolean;
 }
@@ -31,7 +36,11 @@ export function Workspace({
   onWheel,
   onUploadFile,
   onTrySample,
+  onSelectTool,
+  onSelectColor,
+  onSelectStrokeWidth,
   onSelectAnnotation,
+  onCommitAnnotation,
   onFitToScreen,
   isLoading = false,
 }: WorkspaceProps) {
@@ -39,7 +48,7 @@ export function Workspace({
   const [isWorkspaceDragOver, setIsWorkspaceDragOver] = useState(false);
   const image = document.image;
 
-  // Auto-fit image to container whenever a new image is loaded or container dimensions change
+  // Auto-fit image to container whenever a new image is loaded
   useEffect(() => {
     if (image && containerRef.current) {
       const rect = containerRef.current.getBoundingClientRect();
@@ -49,7 +58,7 @@ export function Workspace({
     }
   }, [image, onFitToScreen]);
 
-  // Handle window resizing to keep the fitted view centered
+  // Handle window resizing
   useEffect(() => {
     const handleResize = () => {
       if (image && containerRef.current) {
@@ -65,7 +74,8 @@ export function Workspace({
   }, [image, onFitToScreen]);
 
   const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (e.button === 1 || e.target === containerRef.current || (e.target as HTMLElement).tagName === 'MAIN') {
+    // Only pan workspace background when middle button or clicked empty region
+    if (e.button === 1 || e.target === containerRef.current) {
       e.preventDefault();
       onStartPanning({ x: e.clientX, y: e.clientY });
     }
@@ -101,7 +111,6 @@ export function Workspace({
   const handleDragLeave = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.stopPropagation();
-    // Only deactivate if leaving the container itself
     if (e.currentTarget === e.target) {
       setIsWorkspaceDragOver(false);
     }
@@ -149,7 +158,11 @@ export function Workspace({
       {image && (
         <DrawingToolbar
           activeTool={document.activeTool}
-          onSelectTool={() => {}}
+          activeColor={document.activeColor}
+          activeStrokeWidth={document.activeStrokeWidth}
+          onSelectTool={onSelectTool}
+          onSelectColor={onSelectColor}
+          onSelectStrokeWidth={onSelectStrokeWidth}
         />
       )}
 
@@ -159,8 +172,12 @@ export function Workspace({
           image={image}
           annotations={document.annotations}
           selectedAnnotationId={document.selectedAnnotationId}
+          activeTool={document.activeTool}
+          activeColor={document.activeColor}
+          activeStrokeWidth={document.activeStrokeWidth}
           viewport={viewport}
           onSelectAnnotation={onSelectAnnotation}
+          onCommitAnnotation={onCommitAnnotation}
         />
       ) : (
         <EmptyState

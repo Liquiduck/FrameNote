@@ -3,8 +3,8 @@ import type { ViewportState } from '../../types/viewport';
 import { MAX_ZOOM, MIN_ZOOM } from '../../types/viewport';
 
 /**
- * Converts a point in viewport/screen pixel space to the original unscaled image pixel space.
- * All annotation geometries MUST be transformed and stored using image coordinates.
+ * Converts a point in viewport/screen pixel space to the original unscaled image pixel space
+ * given an analytical ViewportState.
  */
 export function screenToImageCoordinates(
   screenPoint: Point,
@@ -30,6 +30,75 @@ export function imageToScreenCoordinates(
   return {
     x: viewport.pan.x + imagePoint.x * viewport.zoom,
     y: viewport.pan.y + imagePoint.y * viewport.zoom,
+  };
+}
+
+/**
+ * Converts screen/client coordinates (e.g., from PointerEvent.clientX / clientY)
+ * to exact unscaled image coordinates using the SVG element's Screen CTM (or bounding rect).
+ *
+ * This accounts for:
+ * 1. SVG viewBox to image pixel mapping (1:1 with decoded image).
+ * 2. Current zoom scale and pan offset transforms.
+ * 3. Element position on screen and window scrolling.
+ * 4. Device pixel ratio.
+ */
+export function clientToImageCoordinates(
+  clientPoint: Point,
+  svgElement: SVGSVGElement,
+  imageDimensions?: Dimensions,
+  clamp = true
+): Point {
+  let pt: Point;
+
+  // Prefer SVG DOM matrix transform when available
+  const ctm = svgElement.getScreenCTM?.();
+  if (ctm && typeof svgElement.createSVGPoint === 'function') {
+    try {
+      const svgPoint = svgElement.createSVGPoint();
+      svgPoint.x = clientPoint.x;
+      svgPoint.y = clientPoint.y;
+      const transformed = svgPoint.matrixTransform(ctm.inverse());
+      pt = { x: transformed.x, y: transformed.y };
+    } catch {
+      pt = clientToImageViaBoundingRect(clientPoint, svgElement, imageDimensions);
+    }
+  } else {
+    pt = clientToImageViaBoundingRect(clientPoint, svgElement, imageDimensions);
+  }
+
+  if (clamp && imageDimensions) {
+    return clampToImageBounds(pt, imageDimensions);
+  }
+
+  return pt;
+}
+
+/**
+ * Fallback converter using getBoundingClientRect and viewBox / dimensions.
+ * Guaranteed to work in both browsers and headless/jsdom testing environments.
+ */
+export function clientToImageViaBoundingRect(
+  clientPoint: Point,
+  svgElement: SVGSVGElement | { getBoundingClientRect: () => DOMRect; viewBox?: { baseVal?: { width?: number; height?: number } } },
+  imageDimensions?: Dimensions
+): Point {
+  const rect = svgElement.getBoundingClientRect();
+  const vbWidth =
+    svgElement.viewBox?.baseVal?.width && svgElement.viewBox.baseVal.width > 0
+      ? svgElement.viewBox.baseVal.width
+      : (imageDimensions?.width ?? rect.width);
+  const vbHeight =
+    svgElement.viewBox?.baseVal?.height && svgElement.viewBox.baseVal.height > 0
+      ? svgElement.viewBox.baseVal.height
+      : (imageDimensions?.height ?? rect.height);
+
+  const scaleX = rect.width > 0 ? vbWidth / rect.width : 1;
+  const scaleY = rect.height > 0 ? vbHeight / rect.height : 1;
+
+  return {
+    x: (clientPoint.x - rect.left) * scaleX,
+    y: (clientPoint.y - rect.top) * scaleY,
   };
 }
 
@@ -89,7 +158,6 @@ export function zoomAtFocalPoint(
 
   const zoomFactor = clampedZoom / currentViewport.zoom;
 
-  // New pan ensures the image point under the focal cursor remains fixed in screen coordinates
   const newPanX = focalPoint.x - (focalPoint.x - currentViewport.pan.x) * zoomFactor;
   const newPanY = focalPoint.y - (focalPoint.y - currentViewport.pan.y) * zoomFactor;
 

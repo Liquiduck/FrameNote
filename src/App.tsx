@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Dimensions } from './types/geometry';
 import type { LoadedImage } from './types/document';
+import type { RectangleAnnotation } from './types/annotation';
 import { useAnnotationDocument } from './hooks/useAnnotationDocument';
 import { useImageLoader } from './hooks/useImageLoader';
 import { useViewport } from './hooks/useViewport';
@@ -28,7 +29,12 @@ export function App() {
     undo,
     redo,
     setImage,
+    setActiveTool,
+    setActiveColor,
+    setActiveStrokeWidth,
     selectAnnotation,
+    addAnnotation,
+    deleteAnnotation,
   } = useAnnotationDocument();
 
   const {
@@ -113,6 +119,13 @@ export function App() {
     [document.image, fitToScreen]
   );
 
+  const handleCommitRectangle = useCallback(
+    (annotation: RectangleAnnotation) => {
+      addAnnotation(annotation);
+    },
+    [addAnnotation]
+  );
+
   const handleExport = useCallback(async () => {
     if (!document.image) return;
 
@@ -132,7 +145,7 @@ export function App() {
     }
   }, [document]);
 
-  // Global Keyboard Shortcuts (Undo, Redo, Zoom)
+  // Global Keyboard Shortcuts (Undo, Redo, Zoom, Tool switching, Deletion)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) {
@@ -157,12 +170,32 @@ export function App() {
       } else if (e.key === '0') {
         e.preventDefault();
         resetZoom();
+      } else if (e.key.toLowerCase() === 'r') {
+        setActiveTool('rectangle');
+      } else if (e.key.toLowerCase() === 'v') {
+        setActiveTool('select');
+      } else if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (document.selectedAnnotationId) {
+          e.preventDefault();
+          deleteAnnotation(document.selectedAnnotationId);
+        }
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [canUndo, canRedo, undo, redo, zoomIn, zoomOut, resetZoom]);
+  }, [
+    canUndo,
+    canRedo,
+    undo,
+    redo,
+    zoomIn,
+    zoomOut,
+    resetZoom,
+    setActiveTool,
+    document.selectedAnnotationId,
+    deleteAnnotation,
+  ]);
 
   return (
     <div className="fn-app-shell">
@@ -192,7 +225,11 @@ export function App() {
           onWheel={handleWheel}
           onUploadFile={requestLoadFile}
           onTrySample={requestLoadSample}
+          onSelectTool={setActiveTool}
+          onSelectColor={setActiveColor}
+          onSelectStrokeWidth={setActiveStrokeWidth}
           onSelectAnnotation={selectAnnotation}
+          onCommitAnnotation={handleCommitRectangle}
           onFitToScreen={handleFitToScreen}
           isLoading={isLoading}
         />

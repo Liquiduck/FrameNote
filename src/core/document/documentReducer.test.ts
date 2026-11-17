@@ -98,4 +98,24 @@ describe('documentReducer', () => {
     expect(state.comments[0]?.annotationId).toBe('rect-1');
     expect(state.comments[0]?.messages[0]?.content).toBe('Increase button contrast here');
   });
+
+  it('updates active tool, color, and stroke width', () => {
+    let state = documentReducer(INITIAL_DOCUMENT, {
+      type: 'SET_ACTIVE_TOOL',
+      payload: 'rectangle',
+    });
+    expect(state.activeTool).toBe('rectangle');
+
+    state = documentReducer(state, {
+      type: 'SET_ACTIVE_COLOR',
+      payload: '#ef4444',
+    });
+    expect(state.activeColor).toBe('#ef4444');
+
+    state = documentReducer(state, {
+      type: 'SET_ACTIVE_STROKE_WIDTH',
+      payload: 8,
+    });
+    expect(state.activeStrokeWidth).toBe(8);
+  });
 });

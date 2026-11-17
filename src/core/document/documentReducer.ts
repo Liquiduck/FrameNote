@@ -1,5 +1,6 @@
 import type { Annotation, AnnotationTool, CommentMessage, CommentThread } from '../../types/annotation';
 import type { AnnotationDocument, LoadedImage } from '../../types/document';
+import { ANNOTATION_COLORS, STROKE_WIDTH_PRESETS } from '../annotation/rectangleGeometry';
 
 export const INITIAL_DOCUMENT: AnnotationDocument = {
   id: 'doc-initial',
@@ -8,7 +9,9 @@ export const INITIAL_DOCUMENT: AnnotationDocument = {
   annotations: [],
   comments: [],
   selectedAnnotationId: null,
-  activeTool: 'select',
+  activeTool: 'rectangle',
+  activeColor: ANNOTATION_COLORS[0].value,
+  activeStrokeWidth: STROKE_WIDTH_PRESETS[1].value,
 };
 
 export type DocumentAction =
@@ -16,6 +19,8 @@ export type DocumentAction =
   | { type: 'CLEAR_IMAGE' }
   | { type: 'SET_TITLE'; payload: string }
   | { type: 'SET_ACTIVE_TOOL'; payload: AnnotationTool }
+  | { type: 'SET_ACTIVE_COLOR'; payload: string }
+  | { type: 'SET_ACTIVE_STROKE_WIDTH'; payload: number }
   | { type: 'SELECT_ANNOTATION'; payload: string | null }
   | { type: 'ADD_ANNOTATION'; payload: Annotation }
   | { type: 'UPDATE_ANNOTATION'; payload: Annotation }
@@ -37,6 +42,7 @@ export function documentReducer(
         annotations: [],
         comments: [],
         selectedAnnotationId: null,
+        activeTool: 'rectangle', // Ready to annotate screenshot
       };
     }
 
@@ -55,8 +61,21 @@ export function documentReducer(
       return {
         ...state,
         activeTool: action.payload,
-        // Deselect if switching away from select tool
         selectedAnnotationId: action.payload === 'select' ? state.selectedAnnotationId : null,
+      };
+    }
+
+    case 'SET_ACTIVE_COLOR': {
+      return {
+        ...state,
+        activeColor: action.payload,
+      };
+    }
+
+    case 'SET_ACTIVE_STROKE_WIDTH': {
+      return {
+        ...state,
+        activeStrokeWidth: action.payload,
       };
     }
 

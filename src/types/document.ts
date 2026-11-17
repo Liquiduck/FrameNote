@@ -17,4 +17,6 @@ export interface AnnotationDocument {
   readonly comments: readonly CommentThread[];
   readonly selectedAnnotationId: string | null;
   readonly activeTool: AnnotationTool;
+  readonly activeColor: string;
+  readonly activeStrokeWidth: number;
 }

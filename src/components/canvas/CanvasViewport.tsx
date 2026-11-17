@@ -1,25 +1,60 @@
-import type { Annotation } from '../../types/annotation';
+import { useEffect } from 'react';
+import type { Annotation, AnnotationTool, RectangleAnnotation } from '../../types/annotation';
 import type { LoadedImage } from '../../types/document';
 import type { ViewportState } from '../../types/viewport';
+import { useRectangleDrawing } from '../../hooks/useRectangleDrawing';
 
 interface CanvasViewportProps {
   image: LoadedImage;
   annotations: readonly Annotation[];
   selectedAnnotationId: string | null;
+  activeTool: AnnotationTool;
+  activeColor: string;
+  activeStrokeWidth: number;
   viewport: ViewportState;
   onSelectAnnotation: (id: string | null) => void;
+  onCommitAnnotation: (annotation: RectangleAnnotation) => void;
 }
 
 export function CanvasViewport({
   image,
   annotations,
   selectedAnnotationId,
-  onSelectAnnotation,
+  activeTool,
+  activeColor,
+  activeStrokeWidth,
   viewport,
+  onSelectAnnotation,
+  onCommitAnnotation,
 }: CanvasViewportProps) {
+  const {
+    draftAnnotation,
+    cancelDrawing,
+    pointerHandlers,
+  } = useRectangleDrawing({
+    activeTool,
+    activeColor,
+    activeStrokeWidth,
+    imageDimensions: { width: image.width, height: image.height },
+    onCommitAnnotation,
+  });
+
+  // Cancel draft drawing on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        cancelDrawing();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [cancelDrawing]);
+
   const transformStyle = {
     transform: `translate(${viewport.pan.x}px, ${viewport.pan.y}px) scale(${viewport.zoom})`,
   };
+
+  const isDrawingTool = activeTool === 'rectangle';
 
   return (
     <div className="fn-viewport-stage" style={transformStyle}>
@@ -47,22 +82,44 @@ export function CanvasViewport({
           width={image.width}
           height={image.height}
           xmlns="http://www.w3.org/2000/svg"
+          style={{ cursor: isDrawingTool ? 'crosshair' : 'default' }}
+          {...pointerHandlers}
         >
+          {/* Committed Annotations */}
           {annotations.map((annotation) => {
             const isSelected = annotation.id === selectedAnnotationId;
             return (
               <g
                 key={annotation.id}
                 onClick={(e) => {
-                  e.stopPropagation();
-                  onSelectAnnotation(annotation.id);
+                  if (activeTool === 'select') {
+                    e.stopPropagation();
+                    onSelectAnnotation(annotation.id);
+                  }
                 }}
-                style={{ cursor: 'pointer' }}
+                style={{ cursor: activeTool === 'select' ? 'pointer' : 'crosshair' }}
               >
                 {renderSvgAnnotation(annotation, isSelected)}
               </g>
             );
           })}
+
+          {/* Active Draft Rectangle */}
+          {draftAnnotation && (
+            <rect
+              className="fn-draft-rectangle"
+              x={draftAnnotation.x}
+              y={draftAnnotation.y}
+              width={draftAnnotation.width}
+              height={draftAnnotation.height}
+              fill="transparent"
+              stroke={draftAnnotation.color}
+              strokeWidth={draftAnnotation.strokeWidth}
+              strokeLinejoin="round"
+              strokeLinecap="round"
+              rx={2}
+            />
+          )}
         </svg>
       </div>
     </div>
@@ -70,23 +127,41 @@ export function CanvasViewport({
 }
 
 function renderSvgAnnotation(annotation: Annotation, isSelected: boolean) {
-  const strokeColor = isSelected ? 'var(--fn-indigo-500)' : annotation.color;
+  const strokeColor = isSelected ? '#4f46e5' : annotation.color;
   const strokeWidth = annotation.strokeWidth;
 
   switch (annotation.type) {
     case 'rectangle':
       return (
-        <rect
-          x={annotation.x}
-          y={annotation.y}
-          width={annotation.width}
-          height={annotation.height}
-          fill={annotation.fill ?? 'none'}
-          stroke={strokeColor}
-          strokeWidth={strokeWidth}
-          strokeDasharray={isSelected ? '4 2' : undefined}
-          rx={4}
-        />
+        <g>
+          {/* Selection halo if selected */}
+          {isSelected && (
+            <rect
+              x={annotation.x - 3}
+              y={annotation.y - 3}
+              width={annotation.width + 6}
+              height={annotation.height + 6}
+              fill="none"
+              stroke="#6366f1"
+              strokeWidth={Math.max(1, strokeWidth * 0.5)}
+              strokeDasharray="4 3"
+              rx={4}
+              opacity={0.8}
+            />
+          )}
+          <rect
+            x={annotation.x}
+            y={annotation.y}
+            width={annotation.width}
+            height={annotation.height}
+            fill={annotation.fill && annotation.fill !== 'transparent' ? annotation.fill : 'transparent'}
+            stroke={strokeColor}
+            strokeWidth={strokeWidth}
+            strokeLinejoin="round"
+            strokeLinecap="round"
+            rx={2}
+          />
+        </g>
       );
 
     case 'arrow':
