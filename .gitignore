@@ -1,0 +1,19 @@
+# Dependencies
+node_modules/
+
+# Production build
+dist/
+
+# Test & coverage outputs
+coverage/
+playwright-report/
+test-results/
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Editor and OS
+.DS_Store
+Thumbs.db
