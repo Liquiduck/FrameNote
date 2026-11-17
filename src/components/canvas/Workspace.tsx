@@ -1,6 +1,7 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState, type DragEvent } from 'react';
 import type { AnnotationDocument } from '../../types/document';
 import type { ViewportState } from '../../types/viewport';
+import { IconUpload } from '../common/Icons';
 import { CanvasViewport } from './CanvasViewport';
 import { DrawingToolbar } from './DrawingToolbar';
 import { EmptyState } from './EmptyState';
@@ -35,19 +36,36 @@ export function Workspace({
   isLoading = false,
 }: WorkspaceProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const [isWorkspaceDragOver, setIsWorkspaceDragOver] = useState(false);
   const image = document.image;
 
-  // Auto-fit image to container on initial load
+  // Auto-fit image to container whenever a new image is loaded or container dimensions change
   useEffect(() => {
     if (image && containerRef.current) {
       const rect = containerRef.current.getBoundingClientRect();
-      onFitToScreen({ width: rect.width, height: rect.height });
+      if (rect.width > 0 && rect.height > 0) {
+        onFitToScreen({ width: rect.width, height: rect.height });
+      }
     }
   }, [image, onFitToScreen]);
 
+  // Handle window resizing to keep the fitted view centered
+  useEffect(() => {
+    const handleResize = () => {
+      if (image && containerRef.current) {
+        const rect = containerRef.current.getBoundingClientRect();
+        if (rect.width > 0 && rect.height > 0) {
+          onFitToScreen({ width: rect.width, height: rect.height });
+        }
+      }
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [image, onFitToScreen]);
+
   const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
-    // Middle mouse button or clicking canvas background triggers pan
-    if (e.button === 1 || e.target === containerRef.current || (e.target as HTMLElement).tagName === 'DIV') {
+    if (e.button === 1 || e.target === containerRef.current || (e.target as HTMLElement).tagName === 'MAIN') {
       e.preventDefault();
       onStartPanning({ x: e.clientX, y: e.clientY });
     }
@@ -72,30 +90,70 @@ export function Workspace({
     }
   };
 
+  const handleDragOver = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.dataTransfer.types.includes('Files')) {
+      setIsWorkspaceDragOver(true);
+    }
+  };
+
+  const handleDragLeave = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    // Only deactivate if leaving the container itself
+    if (e.currentTarget === e.target) {
+      setIsWorkspaceDragOver(false);
+    }
+  };
+
+  const handleDrop = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsWorkspaceDragOver(false);
+
+    const file = e.dataTransfer.files?.[0];
+    if (file) {
+      onUploadFile(file);
+    }
+  };
+
   return (
     <main
       ref={containerRef}
-      className="fn-workspace"
+      className={`fn-workspace ${isWorkspaceDragOver ? 'is-drag-active' : ''}`}
       style={{ cursor: isPanning ? 'grabbing' : 'default' }}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseUp}
       onWheel={handleWheel}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
       role="region"
       aria-label="Image annotation workspace"
     >
-      {/* Floating Drawing Toolbar (visible when an image is loaded) */}
+      {/* Drag Over Overlay */}
+      {isWorkspaceDragOver && (
+        <div className="fn-workspace-drop-overlay" aria-hidden="true">
+          <div className="fn-drop-overlay-card">
+            <IconUpload width={32} height={32} />
+            <p className="fn-drop-overlay-title">Drop image to replace current screenshot</p>
+            <p className="fn-drop-overlay-sub">Supported formats: PNG, JPEG, WebP (up to 25 MB)</p>
+          </div>
+        </div>
+      )}
+
+      {/* Floating Drawing Toolbar (shown when image is loaded) */}
       {image && (
         <DrawingToolbar
           activeTool={document.activeTool}
-          onSelectTool={() => {
-            // Note: Tool switching will be wired to document reducer;
-            // drawing interactions are held for the next phase.
-          }}
+          onSelectTool={() => {}}
         />
       )}
 
+      {/* Workspace Content */}
       {image ? (
         <CanvasViewport
           image={image}
@@ -110,6 +168,16 @@ export function Workspace({
           onTrySample={onTrySample}
           isLoading={isLoading}
         />
+      )}
+
+      {/* Loading Overlay */}
+      {isLoading && (
+        <div className="fn-workspace-loading-scrim" role="status" aria-live="polite">
+          <div className="fn-loading-indicator">
+            <span className="fn-loading-spinner" />
+            <span>Decoding screenshot...</span>
+          </div>
+        </div>
       )}
     </main>
   );

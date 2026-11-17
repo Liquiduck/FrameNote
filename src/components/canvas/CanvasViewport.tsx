@@ -30,16 +30,17 @@ export function CanvasViewport({
           height: image.height,
         }}
       >
-        {/* Base Screenshot Image */}
+        {/* Base Screenshot Image (aspect ratio strictly preserved, no crop or stretch) */}
         <img
           src={image.src}
-          alt={image.name}
+          alt={`Screenshot: ${image.name}`}
           width={image.width}
           height={image.height}
           className="fn-base-image"
+          draggable={false}
         />
 
-        {/* SVG Overlay: Uses native image pixel coordinates via viewBox */}
+        {/* SVG Overlay: Coordinate space locked to native image pixels via viewBox */}
         <svg
           className="fn-svg-overlay"
           viewBox={`0 0 ${image.width} ${image.height}`}
@@ -68,9 +69,6 @@ export function CanvasViewport({
   );
 }
 
-/**
- * Render individual annotations inside the SVG coordinate space (original image pixels).
- */
 function renderSvgAnnotation(annotation: Annotation, isSelected: boolean) {
   const strokeColor = isSelected ? 'var(--fn-indigo-500)' : annotation.color;
   const strokeWidth = annotation.strokeWidth;

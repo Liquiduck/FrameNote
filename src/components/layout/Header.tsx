@@ -22,7 +22,7 @@ export function Header({
     const file = e.target.files?.[0];
     if (file) {
       onUploadFile(file);
-      // Reset input value so re-selecting same file triggers change
+      // Reset input value so re-selecting same file triggers change event
       e.target.value = '';
     }
   };
@@ -43,9 +43,12 @@ export function Header({
           <span>FrameNote</span>
         </div>
 
-        {hasImage && (
-          <span className="fn-doc-badge" title={document.image?.name}>
-            {document.image?.name}
+        {hasImage && document.image && (
+          <span
+            className="fn-doc-badge"
+            title={`${document.image.name} (${document.image.width} × ${document.image.height} px)`}
+          >
+            {document.image.name}
           </span>
         )}
       </div>
@@ -54,7 +57,7 @@ export function Header({
         <input
           ref={fileInputRef}
           type="file"
-          accept="image/*"
+          accept="image/png,image/jpeg,image/webp"
           className="fn-hidden-file-input"
           onChange={handleFileChange}
           aria-label="Upload screenshot"
@@ -64,7 +67,7 @@ export function Header({
           type="button"
           className="fn-btn-secondary"
           onClick={handleUploadClick}
-          title="Upload new screenshot"
+          title="Upload new screenshot (PNG, JPEG, WebP)"
         >
           <IconUpload />
           <span>Upload</span>

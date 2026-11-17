@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Dimensions } from './types/geometry';
+import type { LoadedImage } from './types/document';
 import { useAnnotationDocument } from './hooks/useAnnotationDocument';
 import { useImageLoader } from './hooks/useImageLoader';
 import { useViewport } from './hooks/useViewport';
@@ -8,9 +9,17 @@ import { Header } from './components/layout/Header';
 import { CommentsSidebar } from './components/layout/CommentsSidebar';
 import { StatusBar } from './components/layout/StatusBar';
 import { Workspace } from './components/canvas/Workspace';
+import { ConfirmDialog } from './components/common/ConfirmDialog';
+import { NotificationBanner } from './components/common/NotificationBanner';
+
+type PendingLoadAction =
+  | { type: 'file'; file: File }
+  | { type: 'sample' };
 
 export function App() {
   const [isExporting, setIsExporting] = useState(false);
+  const [pendingLoad, setPendingLoad] = useState<PendingLoadAction | null>(null);
+  const workspaceDimsRef = useRef<Dimensions>({ width: 800, height: 600 });
 
   const {
     document,
@@ -36,20 +45,67 @@ export function App() {
   } = useViewport();
 
   const handleImageLoaded = useCallback(
-    (loadedImg: Parameters<typeof setImage>[0]) => {
+    (loadedImg: LoadedImage) => {
+      // Replacing image resets document state, selection, and history
       setImage(loadedImg);
+      // Reset viewport to fit newly loaded image within workspace
+      if (workspaceDimsRef.current.width > 0 && workspaceDimsRef.current.height > 0) {
+        fitToScreen(loadedImg, workspaceDimsRef.current);
+      }
     },
-    [setImage]
+    [setImage, fitToScreen]
   );
 
   const {
     isLoading,
+    error,
     loadFile,
     loadSample,
-  } = useImageLoader(handleImageLoaded);
+    clearError,
+  } = useImageLoader({ onImageLoaded: handleImageLoaded });
+
+  // Safe wrapper for file loading that asks for confirmation if annotations would be discarded
+  const requestLoadFile = useCallback(
+    (file: File) => {
+      clearError();
+      if (document.annotations.length > 0) {
+        setPendingLoad({ type: 'file', file });
+      } else {
+        loadFile(file);
+      }
+    },
+    [document.annotations.length, loadFile, clearError]
+  );
+
+  // Safe wrapper for sample loading
+  const requestLoadSample = useCallback(() => {
+    clearError();
+    if (document.annotations.length > 0) {
+      setPendingLoad({ type: 'sample' });
+    } else {
+      loadSample();
+    }
+  }, [document.annotations.length, loadSample, clearError]);
+
+  const handleConfirmReplace = useCallback(() => {
+    if (!pendingLoad) return;
+    const action = pendingLoad;
+    setPendingLoad(null);
+
+    if (action.type === 'file') {
+      loadFile(action.file);
+    } else if (action.type === 'sample') {
+      loadSample();
+    }
+  }, [pendingLoad, loadFile, loadSample]);
+
+  const handleCancelReplace = useCallback(() => {
+    setPendingLoad(null);
+  }, []);
 
   const handleFitToScreen = useCallback(
     (containerDims: Dimensions) => {
+      workspaceDimsRef.current = containerDims;
       if (document.image) {
         fitToScreen(document.image, containerDims);
       }
@@ -79,7 +135,6 @@ export function App() {
   // Global Keyboard Shortcuts (Undo, Redo, Zoom)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Don't intercept if user is typing in an input or textarea
       if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) {
         return;
       }
@@ -111,10 +166,16 @@ export function App() {
 
   return (
     <div className="fn-app-shell">
+      {/* Accessible Error / Notification Banner */}
+      <NotificationBanner
+        message={error}
+        onDismiss={clearError}
+      />
+
       {/* Top Header */}
       <Header
         document={document}
-        onUploadFile={loadFile}
+        onUploadFile={requestLoadFile}
         onExport={handleExport}
         isExporting={isExporting}
       />
@@ -129,8 +190,8 @@ export function App() {
           onUpdatePanning={updatePanning}
           onStopPanning={stopPanning}
           onWheel={handleWheel}
-          onUploadFile={loadFile}
-          onTrySample={loadSample}
+          onUploadFile={requestLoadFile}
+          onTrySample={requestLoadSample}
           onSelectAnnotation={selectAnnotation}
           onFitToScreen={handleFitToScreen}
           isLoading={isLoading}
@@ -155,12 +216,20 @@ export function App() {
         onResetZoom={resetZoom}
         onFitToScreen={() => {
           if (document.image) {
-            fitToScreen(document.image, {
-              width: window.innerWidth - 280,
-              height: window.innerHeight - 88,
-            });
+            fitToScreen(document.image, workspaceDimsRef.current);
           }
         }}
+      />
+
+      {/* Confirmation Modal when replacing screenshot with existing annotations */}
+      <ConfirmDialog
+        isOpen={pendingLoad !== null}
+        title="Replace current screenshot?"
+        message="Loading a new screenshot will discard your current annotations, comments, and undo history."
+        confirmLabel="Replace Screenshot"
+        cancelLabel="Keep Current"
+        onConfirm={handleConfirmReplace}
+        onCancel={handleCancelReplace}
       />
     </div>
   );
