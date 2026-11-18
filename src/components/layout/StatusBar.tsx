@@ -43,8 +43,8 @@ export function StatusBar({
             className="fn-btn-ghost"
             onClick={onUndo}
             disabled={!canUndo}
-            title="Undo (Ctrl+Z)"
-            aria-label="Undo"
+            title="Undo last action (Ctrl+Z / Cmd+Z)"
+            aria-label="Undo last action (Ctrl+Z)"
           >
             <IconUndo />
           </button>
@@ -53,8 +53,8 @@ export function StatusBar({
             className="fn-btn-ghost"
             onClick={onRedo}
             disabled={!canRedo}
-            title="Redo (Ctrl+Y / Ctrl+Shift+Z)"
-            aria-label="Redo"
+            title="Redo action (Ctrl+Shift+Z / Cmd+Shift+Z)"
+            aria-label="Redo action (Ctrl+Shift+Z)"
           >
             <IconRedo />
           </button>
@@ -112,7 +112,7 @@ export function StatusBar({
             type="button"
             className="fn-zoom-btn"
             onClick={onFitToScreen}
-            title="Fit to view"
+            title="Fit to view (0)"
             aria-label="Fit to view"
           >
             <IconFit />

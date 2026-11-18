@@ -2,11 +2,6 @@ import { useCallback, useState } from 'react';
 import type { Annotation, AnnotationTool, CommentMessage } from '../types/annotation';
 import type { AnnotationDocument, LoadedImage } from '../types/document';
 import {
-  INITIAL_DOCUMENT,
-  documentReducer,
-  type DocumentAction,
-} from '../core/document/documentReducer';
-import {
   canRedo as checkCanRedo,
   canUndo as checkCanUndo,
   createHistory,
@@ -16,136 +11,143 @@ import {
   undoHistory,
   type HistoryState,
 } from '../core/history/history';
+import { areAnnotationListsEqual } from '../core/annotation/annotationEquality';
+import { ANNOTATION_COLORS, STROKE_WIDTH_PRESETS } from '../core/annotation/rectangleGeometry';
 
 export function useAnnotationDocument() {
-  const [history, setHistory] = useState<HistoryState<AnnotationDocument>>(() =>
-    createHistory(INITIAL_DOCUMENT)
+  // History tracks ONLY annotations (never image blobs, tool choice, or selection)
+  const [annotationsHistory, setAnnotationsHistory] = useState<HistoryState<readonly Annotation[]>>(() =>
+    createHistory([])
   );
 
-  const document = history.present;
+  // Document metadata and image reference (held once, outside history entries)
+  const [image, setImageState] = useState<LoadedImage | null>(null);
+  const [title, setTitleState] = useState<string>('Untitled Screenshot');
 
-  const dispatch = useCallback((action: DocumentAction, trackHistory = true) => {
-    setHistory((prev) => {
-      const nextPresent = documentReducer(prev.present, action);
-      if (nextPresent === prev.present) return prev;
+  // Interactive UI state (excluded from history)
+  const [activeTool, setActiveToolState] = useState<AnnotationTool>('rectangle');
+  const [activeColor, setActiveColorState] = useState<string>(ANNOTATION_COLORS[0].value);
+  const [activeStrokeWidth, setActiveStrokeWidthState] = useState<number>(STROKE_WIDTH_PRESETS[1].value);
+  const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(null);
 
-      if (!trackHistory) {
-        return { ...prev, present: nextPresent };
+  // Keep selection valid: if an annotation was removed by undo/redo, clear selection
+  const validateSelectionAgainst = useCallback((nextAnnotations: readonly Annotation[]) => {
+    setSelectedAnnotationId((prevSelectedId) => {
+      if (prevSelectedId && !nextAnnotations.some((a) => a.id === prevSelectedId)) {
+        return null;
       }
-
-      // Actions like SELECT_ANNOTATION, SET_ACTIVE_TOOL, SET_ACTIVE_COLOR don't need undo/redo steps
-      const isTransient =
-        action.type === 'SELECT_ANNOTATION' ||
-        action.type === 'SET_ACTIVE_TOOL' ||
-        action.type === 'SET_ACTIVE_COLOR' ||
-        action.type === 'SET_ACTIVE_STROKE_WIDTH';
-
-      if (isTransient) {
-        return { ...prev, present: nextPresent };
-      }
-
-      return pushHistory(prev, nextPresent);
+      return prevSelectedId;
     });
   }, []);
 
   const undo = useCallback(() => {
-    setHistory((prev) => undoHistory(prev));
-  }, []);
+    setAnnotationsHistory((prev) => {
+      if (!checkCanUndo(prev)) return prev;
+      const next = undoHistory(prev);
+      validateSelectionAgainst(next.present);
+      return next;
+    });
+  }, [validateSelectionAgainst]);
 
   const redo = useCallback(() => {
-    setHistory((prev) => redoHistory(prev));
-  }, []);
+    setAnnotationsHistory((prev) => {
+      if (!checkCanRedo(prev)) return prev;
+      const next = redoHistory(prev);
+      validateSelectionAgainst(next.present);
+      return next;
+    });
+  }, [validateSelectionAgainst]);
 
-  const setImage = useCallback(
-    (image: LoadedImage) => {
-      const nextDoc = documentReducer(INITIAL_DOCUMENT, {
-        type: 'SET_IMAGE',
-        payload: image,
-      });
-      setHistory(resetHistory(nextDoc));
-    },
-    []
-  );
+  const setImage = useCallback((newImage: LoadedImage) => {
+    setImageState(newImage);
+    setTitleState(newImage.name.replace(/\.[^/.]+$/, ''));
+    // Replacing an image resets annotations, selection, and history
+    setAnnotationsHistory(resetHistory([]));
+    setSelectedAnnotationId(null);
+    setActiveToolState('rectangle');
+  }, []);
 
   const clearImage = useCallback(() => {
-    setHistory(resetHistory(INITIAL_DOCUMENT));
+    setImageState(null);
+    setTitleState('Untitled Screenshot');
+    setAnnotationsHistory(resetHistory([]));
+    setSelectedAnnotationId(null);
+    setActiveToolState('rectangle');
   }, []);
 
-  const setTitle = useCallback(
-    (title: string) => {
-      dispatch({ type: 'SET_TITLE', payload: title }, false);
-    },
-    [dispatch]
-  );
+  const setTitle = useCallback((newTitle: string) => {
+    setTitleState(newTitle.trim() || 'Untitled Screenshot');
+  }, []);
 
-  const setActiveTool = useCallback(
-    (tool: AnnotationTool) => {
-      dispatch({ type: 'SET_ACTIVE_TOOL', payload: tool }, false);
-    },
-    [dispatch]
-  );
+  const setActiveTool = useCallback((tool: AnnotationTool) => {
+    setActiveToolState(tool);
+    // If switching away from select, deselect current annotation
+    if (tool !== 'select') {
+      setSelectedAnnotationId(null);
+    }
+  }, []);
 
-  const setActiveColor = useCallback(
-    (color: string) => {
-      dispatch({ type: 'SET_ACTIVE_COLOR', payload: color }, false);
-    },
-    [dispatch]
-  );
+  const setActiveColor = useCallback((color: string) => {
+    setActiveColorState(color);
+  }, []);
 
-  const setActiveStrokeWidth = useCallback(
-    (strokeWidth: number) => {
-      dispatch({ type: 'SET_ACTIVE_STROKE_WIDTH', payload: strokeWidth }, false);
-    },
-    [dispatch]
-  );
+  const setActiveStrokeWidth = useCallback((strokeWidth: number) => {
+    setActiveStrokeWidthState(strokeWidth);
+  }, []);
 
-  const selectAnnotation = useCallback(
-    (id: string | null) => {
-      dispatch({ type: 'SELECT_ANNOTATION', payload: id }, false);
-    },
-    [dispatch]
-  );
+  const selectAnnotation = useCallback((id: string | null) => {
+    setSelectedAnnotationId(id);
+  }, []);
 
-  const addAnnotation = useCallback(
-    (annotation: Annotation) => {
-      dispatch({ type: 'ADD_ANNOTATION', payload: annotation }, true);
-    },
-    [dispatch]
-  );
+  const addAnnotation = useCallback((annotation: Annotation) => {
+    setAnnotationsHistory((prev) => {
+      const nextPresent = [...prev.present, annotation];
+      return pushHistory(prev, nextPresent, areAnnotationListsEqual);
+    });
+    setSelectedAnnotationId(annotation.id);
+  }, []);
 
-  const updateAnnotation = useCallback(
-    (annotation: Annotation) => {
-      dispatch({ type: 'UPDATE_ANNOTATION', payload: annotation }, true);
-    },
-    [dispatch]
-  );
+  const updateAnnotation = useCallback((annotation: Annotation) => {
+    setAnnotationsHistory((prev) => {
+      const nextPresent = prev.present.map((a) => (a.id === annotation.id ? annotation : a));
+      return pushHistory(prev, nextPresent, areAnnotationListsEqual);
+    });
+  }, []);
 
-  const deleteAnnotation = useCallback(
-    (id: string) => {
-      dispatch({ type: 'DELETE_ANNOTATION', payload: id }, true);
-    },
-    [dispatch]
-  );
+  const deleteAnnotation = useCallback((id: string) => {
+    setAnnotationsHistory((prev) => {
+      const nextPresent = prev.present.filter((a) => a.id !== id);
+      return pushHistory(prev, nextPresent, areAnnotationListsEqual);
+    });
+    setSelectedAnnotationId((prevSelectedId) => (prevSelectedId === id ? null : prevSelectedId));
+  }, []);
 
-  const addComment = useCallback(
-    (annotationId: string, message: CommentMessage) => {
-      dispatch({ type: 'ADD_COMMENT', payload: { annotationId, message } }, true);
-    },
-    [dispatch]
-  );
+  // For compatibility with legacy comment thread calls
+  const addComment = useCallback((_annotationId: string, _message: CommentMessage) => {
+    // Pin annotations store comment text directly
+  }, []);
 
-  const resolveComment = useCallback(
-    (threadId: string) => {
-      dispatch({ type: 'RESOLVE_COMMENT', payload: threadId }, true);
-    },
-    [dispatch]
-  );
+  const resolveComment = useCallback((_threadId: string) => {
+    // Pin annotations store comment text directly
+  }, []);
+
+  const document: AnnotationDocument = {
+    id: `doc-${image?.name ?? 'initial'}`,
+    title,
+    image,
+    annotations: annotationsHistory.present,
+    comments: [],
+    selectedAnnotationId,
+    activeTool,
+    activeColor,
+    activeStrokeWidth,
+  };
 
   return {
     document,
-    canUndo: checkCanUndo(history),
-    canRedo: checkCanRedo(history),
-    historyCount: history.past.length,
+    canUndo: checkCanUndo(annotationsHistory),
+    canRedo: checkCanRedo(annotationsHistory),
+    historyCount: annotationsHistory.past.length,
     undo,
     redo,
     setImage,

@@ -4,6 +4,7 @@ export type AnnotationTool =
   | 'select'
   | 'rectangle'
   | 'arrow'
+  | 'pin'
   | 'pen'
   | 'text'
   | 'callout'
@@ -32,6 +33,15 @@ export interface ArrowAnnotation extends BaseAnnotation {
   // Expressed in original image coordinates
   readonly start: Point;
   readonly end: Point;
+}
+
+export interface PinAnnotation extends BaseAnnotation {
+  readonly type: 'pin';
+  // Center coordinates in original image space
+  readonly x: number;
+  readonly y: number;
+  // Comment text attached directly to the pin
+  readonly text: string;
 }
 
 export interface PenAnnotation extends BaseAnnotation {
@@ -70,6 +80,7 @@ export interface BlurAnnotation extends BaseAnnotation {
 export type Annotation =
   | RectangleAnnotation
   | ArrowAnnotation
+  | PinAnnotation
   | PenAnnotation
   | TextAnnotation
   | CalloutAnnotation

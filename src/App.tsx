@@ -204,6 +204,8 @@ export function App() {
         setActiveTool('rectangle');
       } else if (e.key.toLowerCase() === 'a') {
         setActiveTool('arrow');
+      } else if (e.key.toLowerCase() === 'c') {
+        setActiveTool('pin');
       } else if (e.key === 'Delete' || e.key === 'Backspace') {
         if (document.selectedAnnotationId) {
           e.preventDefault();
@@ -274,6 +276,8 @@ export function App() {
         <CommentsSidebar
           document={document}
           onSelectAnnotation={selectAnnotation}
+          onUpdateAnnotation={updateAnnotation}
+          onDeleteAnnotation={deleteAnnotation}
         />
       </div>
 

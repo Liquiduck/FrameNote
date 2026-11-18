@@ -3,8 +3,9 @@ import {
   INITIAL_DOCUMENT,
   documentReducer,
 } from './documentReducer';
-import type { ArrowAnnotation, RectangleAnnotation } from '../../types/annotation';
+import type { ArrowAnnotation, PinAnnotation, RectangleAnnotation } from '../../types/annotation';
 import type { LoadedImage } from '../../types/document';
+import { getPinDisplayNumber } from '../annotation/pinGeometry';
 
 describe('documentReducer', () => {
   const sampleImage: LoadedImage = {
@@ -35,6 +36,17 @@ describe('documentReducer', () => {
     strokeWidth: 4,
     start: { x: 50, y: 50 },
     end: { x: 200, y: 200 },
+  };
+
+  const samplePin: PinAnnotation = {
+    id: 'pin-1',
+    type: 'pin',
+    createdAt: Date.now() + 20,
+    color: '#f59e0b',
+    strokeWidth: 2,
+    x: 250,
+    y: 300,
+    text: 'Check logo padding',
   };
 
   it('sets image and initializes document title', () => {
@@ -103,7 +115,6 @@ describe('documentReducer', () => {
     expect(state.annotations).toHaveLength(2);
     expect(state.selectedAnnotationId).toBe('arrow-1');
 
-    // Delete the first one (rect-1)
     state = documentReducer(state, {
       type: 'DELETE_ANNOTATION',
       payload: 'rect-1',
@@ -111,11 +122,10 @@ describe('documentReducer', () => {
 
     expect(state.annotations).toHaveLength(1);
     expect(state.annotations[0]?.id).toBe('arrow-1');
-    // Selection was arrow-1, which was not deleted, so it remains selected
     expect(state.selectedAnnotationId).toBe('arrow-1');
   });
 
-  it('cleans up comments when an annotation is deleted', () => {
+  it('updates pin comment text and preserves stable ID', () => {
     let state = documentReducer(INITIAL_DOCUMENT, {
       type: 'SET_IMAGE',
       payload: sampleImage,
@@ -123,55 +133,51 @@ describe('documentReducer', () => {
 
     state = documentReducer(state, {
       type: 'ADD_ANNOTATION',
-      payload: sampleRect,
+      payload: samplePin,
     });
+
+    const updatedPin: PinAnnotation = {
+      ...samplePin,
+      text: 'Revised: update padding to 24px',
+    };
 
     state = documentReducer(state, {
-      type: 'ADD_COMMENT',
-      payload: {
-        annotationId: 'rect-1',
-        message: {
-          id: 'msg-1',
-          author: 'Alex',
-          content: 'Needs higher contrast',
-          timestamp: Date.now(),
-        },
-      },
+      type: 'UPDATE_ANNOTATION',
+      payload: updatedPin,
     });
 
-    expect(state.comments).toHaveLength(1);
-
-    state = documentReducer(state, {
-      type: 'DELETE_ANNOTATION',
-      payload: 'rect-1',
-    });
-
-    expect(state.annotations).toHaveLength(0);
-    expect(state.comments).toHaveLength(0);
+    expect(state.annotations).toHaveLength(1);
+    const pin = state.annotations[0] as PinAnnotation;
+    expect(pin.id).toBe('pin-1');
+    expect(pin.text).toBe('Revised: update padding to 24px');
   });
 
-  it('adds comments to annotation threads', () => {
+  it('renumbers multiple pins after one is deleted', () => {
     let state = documentReducer(INITIAL_DOCUMENT, {
       type: 'SET_IMAGE',
       payload: sampleImage,
     });
 
-    state = documentReducer(state, {
-      type: 'ADD_COMMENT',
-      payload: {
-        annotationId: 'rect-1',
-        message: {
-          id: 'msg-1',
-          author: 'Alex',
-          content: 'Increase button contrast here',
-          timestamp: Date.now(),
-        },
-      },
-    });
+    const pin1: PinAnnotation = { ...samplePin, id: 'pin-1' };
+    const pin2: PinAnnotation = { ...samplePin, id: 'pin-2', x: 400 };
+    const pin3: PinAnnotation = { ...samplePin, id: 'pin-3', x: 600 };
 
-    expect(state.comments).toHaveLength(1);
-    expect(state.comments[0]?.annotationId).toBe('rect-1');
-    expect(state.comments[0]?.messages[0]?.content).toBe('Increase button contrast here');
+    state = documentReducer(state, { type: 'ADD_ANNOTATION', payload: pin1 });
+    state = documentReducer(state, { type: 'ADD_ANNOTATION', payload: pin2 });
+    state = documentReducer(state, { type: 'ADD_ANNOTATION', payload: pin3 });
+
+    expect(getPinDisplayNumber('pin-1', state.annotations)).toBe(1);
+    expect(getPinDisplayNumber('pin-2', state.annotations)).toBe(2);
+    expect(getPinDisplayNumber('pin-3', state.annotations)).toBe(3);
+
+    // Delete pin-2
+    state = documentReducer(state, { type: 'DELETE_ANNOTATION', payload: 'pin-2' });
+
+    expect(state.annotations).toHaveLength(2);
+    // pin-1 stays #1
+    expect(getPinDisplayNumber('pin-1', state.annotations)).toBe(1);
+    // pin-3 dynamically becomes #2
+    expect(getPinDisplayNumber('pin-3', state.annotations)).toBe(2);
   });
 
   it('updates active tool, color, and stroke width', () => {

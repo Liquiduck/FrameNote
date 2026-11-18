@@ -8,6 +8,7 @@ import {
   normalizeRectangle,
 } from '../core/annotation/rectangleGeometry';
 import { createArrowAnnotation } from '../core/annotation/arrowGeometry';
+import { clampPinToImageBounds, createPinAnnotation } from '../core/annotation/pinGeometry';
 import { findTopmostAnnotationAtPoint, moveAnnotation } from '../core/annotation/movement';
 
 interface UseCanvasInteractionOptions {
@@ -40,7 +41,7 @@ export function useCanvasInteraction({
   const [movingAnnotation, setMovingAnnotation] = useState<Annotation | null>(null);
 
   const isInteractingRef = useRef(false);
-  const interactionModeRef = useRef<'draw' | 'move' | null>(null);
+  const interactionModeRef = useRef<'draw' | 'move' | 'pin' | null>(null);
   const startImagePointRef = useRef<Point | null>(null);
   const startScreenPointRef = useRef<Point | null>(null);
   const initialAnnotationRef = useRef<Annotation | null>(null);
@@ -93,12 +94,19 @@ export function useCanvasInteraction({
           interactionModeRef.current = null;
           onSelectAnnotation(null);
         }
+      } else if (activeTool === 'pin') {
+        // Pin tool: immediately place a pin on pointerdown / click
+        interactionModeRef.current = 'pin';
+        const clampedPoint = clampPinToImageBounds(imagePt, imageDimensions);
+        const newPin = createPinAnnotation(clampedPoint, '', activeColor);
+        onCommitAnnotation(newPin);
+        onSelectAnnotation(newPin.id);
       } else if (activeTool === 'rectangle' || activeTool === 'arrow') {
         interactionModeRef.current = 'draw';
         setDraftAnnotation(null);
       }
     },
-    [activeTool, annotations, imageDimensions, onSelectAnnotation]
+    [activeColor, activeTool, annotations, imageDimensions, onCommitAnnotation, onSelectAnnotation]
   );
 
   const handlePointerMove = useCallback(
@@ -112,7 +120,7 @@ export function useCanvasInteraction({
       const screenPt: Point = { x: e.clientX, y: e.clientY };
       const currentImagePt = clientToImageCoordinates(screenPt, svgElement, imageDimensions, true);
 
-      // 1. Moving an existing annotation
+      // 1. Moving an existing annotation (rectangle, arrow, or pin)
       if (interactionModeRef.current === 'move' && initialAnnotationRef.current) {
         const delta: Point = {
           x: currentImagePt.x - startImagePointRef.current.x,
@@ -269,7 +277,6 @@ export function useCanvasInteraction({
           // Ignore
         }
       }
-      // Restores pre-drag geometry or discards draft
       cancelInteraction();
     },
     [cancelInteraction]

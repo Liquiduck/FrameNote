@@ -1,6 +1,7 @@
 import type { Annotation } from '../../types/annotation';
 import type { LoadedImage } from '../../types/document';
 import { calculateArrowGeometry } from '../annotation/arrowGeometry';
+import { getPinDisplayNumber, PIN_RADIUS } from '../annotation/pinGeometry';
 
 export interface ExportOptions {
   readonly scale?: number; // 1 = 1x native resolution, 2 = 2x Retina
@@ -49,7 +50,7 @@ export async function renderDocumentToBlob(
 
   // 2. Render each annotation in native image coordinates
   for (const annotation of annotations) {
-    renderAnnotationToCanvas(ctx, annotation);
+    renderAnnotationToCanvas(ctx, annotation, annotations);
   }
 
   ctx.restore();
@@ -88,7 +89,8 @@ export function downloadBlob(blob: Blob, fileName: string): void {
  */
 function renderAnnotationToCanvas(
   ctx: CanvasRenderingContext2D,
-  annotation: Annotation
+  annotation: Annotation,
+  allAnnotations: readonly Annotation[]
 ): void {
   ctx.save();
   ctx.strokeStyle = annotation.color;
@@ -126,6 +128,30 @@ function renderAnnotationToCanvas(
       break;
     }
 
+    case 'pin': {
+      const pinNumber = getPinDisplayNumber(annotation.id, allAnnotations);
+      const radius = PIN_RADIUS;
+
+      // Outer circle
+      ctx.beginPath();
+      ctx.arc(annotation.x, annotation.y, radius, 0, Math.PI * 2);
+      ctx.fillStyle = annotation.color;
+      ctx.fill();
+
+      // White boundary stroke for contrast against any background
+      ctx.lineWidth = 2.5;
+      ctx.strokeStyle = '#ffffff';
+      ctx.stroke();
+
+      // Number text centered in white
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 12px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(pinNumber.toString(), annotation.x, annotation.y);
+      break;
+    }
+
     case 'pen': {
       if (annotation.points.length < 2) break;
       ctx.beginPath();
@@ -146,10 +172,15 @@ function renderAnnotationToCanvas(
     }
 
     case 'callout': {
-      const radius = 14;
+      const radius = PIN_RADIUS;
       ctx.beginPath();
       ctx.arc(annotation.x, annotation.y, radius, 0, Math.PI * 2);
+      ctx.fillStyle = annotation.color;
       ctx.fill();
+
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = '#ffffff';
+      ctx.stroke();
 
       ctx.fillStyle = '#ffffff';
       ctx.font = 'bold 12px sans-serif';

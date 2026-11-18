@@ -4,6 +4,7 @@ import type { LoadedImage } from '../../types/document';
 import type { ViewportState } from '../../types/viewport';
 import { useCanvasInteraction } from '../../hooks/useCanvasInteraction';
 import { calculateArrowGeometry } from '../../core/annotation/arrowGeometry';
+import { getPinDisplayNumber, PIN_RADIUS } from '../../core/annotation/pinGeometry';
 
 interface CanvasViewportProps {
   image: LoadedImage;
@@ -65,7 +66,7 @@ export function CanvasViewport({
     transform: `translate(${viewport.pan.x}px, ${viewport.pan.y}px) scale(${viewport.zoom})`,
   };
 
-  const isDrawing = activeTool === 'rectangle' || activeTool === 'arrow';
+  const isDrawing = activeTool === 'rectangle' || activeTool === 'arrow' || activeTool === 'pin';
 
   return (
     <div className="fn-viewport-stage" style={transformStyle}>
@@ -98,7 +99,6 @@ export function CanvasViewport({
         >
           {/* Committed Annotations */}
           {annotations.map((annotation) => {
-            // If currently moving, substitute the transient moving position
             const activeAnn =
               movingAnnotation && movingAnnotation.id === annotation.id
                 ? movingAnnotation
@@ -111,7 +111,7 @@ export function CanvasViewport({
                 className={`fn-annotation-group ${isSelected ? 'is-selected' : ''}`}
                 style={{ cursor: activeTool === 'select' ? 'grab' : isDrawing ? 'crosshair' : 'default' }}
               >
-                {renderSvgAnnotation(activeAnn, isSelected)}
+                {renderSvgAnnotation(activeAnn, isSelected, false, annotations)}
               </g>
             );
           })}
@@ -119,7 +119,7 @@ export function CanvasViewport({
           {/* Active Draft (Rectangle or Arrow preview) */}
           {draftAnnotation && (
             <g className="fn-draft-layer" pointerEvents="none">
-              {renderSvgAnnotation(draftAnnotation, false, true)}
+              {renderSvgAnnotation(draftAnnotation, false, true, annotations)}
             </g>
           )}
         </svg>
@@ -131,7 +131,12 @@ export function CanvasViewport({
 /**
  * Render individual annotations with optional editor selection indicator and enlarged invisible hit targets.
  */
-function renderSvgAnnotation(annotation: Annotation, isSelected: boolean, isDraft = false) {
+function renderSvgAnnotation(
+  annotation: Annotation,
+  isSelected: boolean,
+  isDraft = false,
+  allAnnotations: readonly Annotation[] = []
+) {
   const strokeColor = isSelected ? '#4f46e5' : annotation.color;
   const strokeWidth = annotation.strokeWidth;
 
@@ -139,7 +144,7 @@ function renderSvgAnnotation(annotation: Annotation, isSelected: boolean, isDraf
     case 'rectangle':
       return (
         <g>
-          {/* Enlarged invisible hit target for easier clicking */}
+          {/* Enlarged invisible hit target */}
           <rect
             x={annotation.x}
             y={annotation.y}
@@ -167,7 +172,7 @@ function renderSvgAnnotation(annotation: Annotation, isSelected: boolean, isDraf
             />
           )}
 
-          {/* The visible rectangle */}
+          {/* Visible rectangle */}
           <rect
             className={isDraft ? 'fn-draft-rectangle' : undefined}
             x={annotation.x}
@@ -191,7 +196,7 @@ function renderSvgAnnotation(annotation: Annotation, isSelected: boolean, isDraf
 
       return (
         <g>
-          {/* Enlarged invisible hit target along the entire shaft and arrowhead */}
+          {/* Enlarged invisible hit target along the shaft */}
           <line
             x1={annotation.start.x}
             y1={annotation.start.y}
@@ -234,7 +239,7 @@ function renderSvgAnnotation(annotation: Annotation, isSelected: boolean, isDraf
             </g>
           )}
 
-          {/* Visible Arrow Shaft */}
+          {/* Visible Shaft */}
           <line
             x1={geom.start.x}
             y1={geom.start.y}
@@ -245,7 +250,7 @@ function renderSvgAnnotation(annotation: Annotation, isSelected: boolean, isDraf
             strokeLinecap="round"
           />
 
-          {/* Visible Arrow Head (solid fill with matching color) */}
+          {/* Visible Arrowhead */}
           <path
             d={headPath}
             fill={strokeColor}
@@ -253,6 +258,69 @@ function renderSvgAnnotation(annotation: Annotation, isSelected: boolean, isDraf
             strokeWidth={Math.min(2, strokeWidth * 0.5)}
             strokeLinejoin="round"
           />
+        </g>
+      );
+    }
+
+    case 'pin': {
+      const pinNumber = getPinDisplayNumber(annotation.id, allAnnotations);
+      const radius = PIN_RADIUS;
+
+      return (
+        <g
+          role="button"
+          tabIndex={0}
+          aria-label={`Comment pin ${pinNumber}: ${annotation.text ? annotation.text : 'No feedback entered'}`}
+        >
+          {/* Enlarged invisible hit target */}
+          <circle
+            cx={annotation.x}
+            cy={annotation.y}
+            r={radius + 8}
+            fill="transparent"
+            stroke="transparent"
+          />
+
+          {/* Editor-only selection halo */}
+          {isSelected && (
+            <circle
+              cx={annotation.x}
+              cy={annotation.y}
+              r={radius + 5}
+              fill="none"
+              stroke="#4f46e5"
+              strokeWidth={2}
+              strokeDasharray="4 2"
+              pointerEvents="none"
+            />
+          )}
+
+          {/* Pin circular marker */}
+          <circle
+            cx={annotation.x}
+            cy={annotation.y}
+            r={radius}
+            fill={annotation.color}
+            stroke="#ffffff"
+            strokeWidth={2.5}
+            style={{
+              filter: 'drop-shadow(0px 2px 4px rgba(0,0,0,0.35))',
+            }}
+          />
+
+          {/* Centered Number text */}
+          <text
+            x={annotation.x}
+            y={annotation.y}
+            fill="#ffffff"
+            fontSize={12}
+            fontWeight="bold"
+            textAnchor="middle"
+            dominantBaseline="central"
+            pointerEvents="none"
+          >
+            {pinNumber}
+          </text>
         </g>
       );
     }
@@ -291,7 +359,7 @@ function renderSvgAnnotation(annotation: Annotation, isSelected: boolean, isDraf
     case 'callout':
       return (
         <g>
-          <circle cx={annotation.x} cy={annotation.y} r={14} fill={strokeColor} />
+          <circle cx={annotation.x} cy={annotation.y} r={PIN_RADIUS} fill={strokeColor} />
           <text
             x={annotation.x}
             y={annotation.y}

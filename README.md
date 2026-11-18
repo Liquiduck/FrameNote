@@ -31,6 +31,32 @@ FrameNote is a polished screenshot annotation studio designed for software engin
 | `MAX_IMAGE_DIMENSION` | **8,192 px** | Conforms to maximum HTML5 Canvas dimension and standard GPU texture limits across modern desktop and mobile browsers. |
 | `MIN_IMAGE_DIMENSION` | **10 px** | Guards against degenerate or corrupted image files. |
 | `MAX_IMAGE_PIXELS` | **40 Megapixels** (e.g., 8,000 × 5,000) | Protects decoded RGBA bitmap buffer allocations from exceeding browser tab memory constraints (~160 MB raw). |
+| `MAX_HISTORY_STEPS` | **50 steps** | Deep undo/redo stack capacity while bounding memory consumption. |
+
+---
+
+## Undo/Redo History Architecture
+
+FrameNote implements an immutable snapshot history stack (`past`, `present`, `future`) designed specifically for performance and memory safety:
+
+### Included in History
+- **Creating annotations**: Rectangle, arrow, and numbered comment pin creation.
+- **Deleting annotations**: Removing annotations from canvas or sidebar.
+- **Moving annotations**: Full drag translation (one completed drag equals one history entry).
+- **Changing annotation styles**: Updating color or stroke width on selected annotations.
+- **Committing comment edits**: Text notes committed upon `blur` or <kbd>Ctrl</kbd>+<kbd>Enter</kbd> (individual keystrokes never pollute history).
+
+### Excluded from History
+- **Image Data & Blobs**: Decoded images are held once in the document shell, never cloned into history entries.
+- **Active Selection**: Kept valid dynamically; undoing a creation clears selection if the target no longer exists.
+- **Tool Choice & Defaults**: Switching tools (<kbd>V</kbd>, <kbd>R</kbd>, <kbd>A</kbd>, <kbd>C</kbd>) does not create undo steps.
+- **Viewport Transformations**: Panning and zooming remain independent of document history.
+- **Transient Drafts**: In-progress drags and uncommitted drafts exist only in local interaction state.
+
+### Keyboard Shortcuts
+- <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Z</kbd>: Undo.
+- <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> (or <kbd>Ctrl</kbd>+<kbd>Y</kbd>): Redo.
+- Native undo/redo is strictly preserved when editing text inside comment fields or inputs.
 
 ---
 

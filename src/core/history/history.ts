@@ -1,7 +1,14 @@
 /**
- * Immutable Undo/Redo History state manager.
+ * Maximum number of undo steps preserved in memory.
+ * Caps heap usage while offering deep undo/redo capability.
  */
+export const MAX_HISTORY_STEPS = 50;
 
+/**
+ * Immutable Undo/Redo History state manager.
+ * Tracks past, present, and future states with a fixed capacity limit.
+ * Guaranteed to never store heavy image blobs or volatile UI states.
+ */
 export interface HistoryState<T> {
   readonly past: readonly T[];
   readonly present: T;
@@ -9,7 +16,7 @@ export interface HistoryState<T> {
   readonly maxHistory: number;
 }
 
-export function createHistory<T>(initialPresent: T, maxHistory = 50): HistoryState<T> {
+export function createHistory<T>(initialPresent: T, maxHistory = MAX_HISTORY_STEPS): HistoryState<T> {
   return {
     past: [],
     present: initialPresent,
@@ -26,8 +33,19 @@ export function canRedo<T>(state: HistoryState<T>): boolean {
   return state.future.length > 0;
 }
 
-export function pushHistory<T>(state: HistoryState<T>, nextPresent: T): HistoryState<T> {
-  if (state.present === nextPresent) {
+/**
+ * Pushes a new present state into history.
+ * If nextPresent equals current present (via reference or comparator),
+ * returns current state unchanged (no-op prevention).
+ * Clears redo stack (future: []).
+ */
+export function pushHistory<T>(
+  state: HistoryState<T>,
+  nextPresent: T,
+  isEqual?: (a: T, b: T) => boolean
+): HistoryState<T> {
+  const isSame = isEqual ? isEqual(state.present, nextPresent) : state.present === nextPresent;
+  if (isSame) {
     return state;
   }
 
@@ -39,7 +57,7 @@ export function pushHistory<T>(state: HistoryState<T>, nextPresent: T): HistoryS
   return {
     past: updatedPast,
     present: nextPresent,
-    future: [], // New action clears redo stack
+    future: [], // A new action after undo always clears redo history
     maxHistory: state.maxHistory,
   };
 }
@@ -86,6 +104,6 @@ export function redoHistory<T>(state: HistoryState<T>): HistoryState<T> {
   };
 }
 
-export function resetHistory<T>(initialPresent: T, maxHistory = 50): HistoryState<T> {
+export function resetHistory<T>(initialPresent: T, maxHistory = MAX_HISTORY_STEPS): HistoryState<T> {
   return createHistory(initialPresent, maxHistory);
 }

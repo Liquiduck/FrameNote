@@ -34,9 +34,9 @@ const TOOLS: Array<{
   { id: 'select', label: 'Select & Move', icon: IconSelect, shortcut: 'V', implemented: true },
   { id: 'rectangle', label: 'Rectangle', icon: IconRectangle, shortcut: 'R', implemented: true },
   { id: 'arrow', label: 'Arrow', icon: IconArrow, shortcut: 'A', implemented: true },
+  { id: 'pin', label: 'Comment Pin', icon: IconCallout, shortcut: 'C', implemented: true },
   { id: 'pen', label: 'Freehand Pen (coming soon)', icon: IconPen, shortcut: 'P', implemented: false },
   { id: 'text', label: 'Text (coming soon)', icon: IconText, shortcut: 'T', implemented: false },
-  { id: 'callout', label: 'Callout (coming soon)', icon: IconCallout, shortcut: 'C', implemented: false },
   { id: 'blur', label: 'Redact (coming soon)', icon: IconBlur, shortcut: 'B', implemented: false },
 ];
 

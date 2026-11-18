@@ -1,5 +1,6 @@
-import type { Annotation, ArrowAnnotation, RectangleAnnotation } from '../../types/annotation';
+import type { Annotation, ArrowAnnotation, PinAnnotation, RectangleAnnotation } from '../../types/annotation';
 import type { Dimensions, Point } from '../../types/geometry';
+import { PIN_RADIUS } from './pinGeometry';
 
 /**
  * Calculates new annotation position from an initial geometry snapshot and pointer displacement.
@@ -58,6 +59,26 @@ export function moveAnnotation<T extends Annotation>(
       } as unknown as T;
     }
 
+    case 'pin': {
+      const pin = initial as unknown as PinAnnotation;
+      const minX = PIN_RADIUS;
+      const maxX = Math.max(PIN_RADIUS, imageBounds.width - PIN_RADIUS);
+      const minY = PIN_RADIUS;
+      const maxY = Math.max(PIN_RADIUS, imageBounds.height - PIN_RADIUS);
+
+      const unclampedX = pin.x + delta.x;
+      const unclampedY = pin.y + delta.y;
+
+      const clampedX = Math.round(Math.max(minX, Math.min(unclampedX, maxX)));
+      const clampedY = Math.round(Math.max(minY, Math.min(unclampedY, maxY)));
+
+      return {
+        ...pin,
+        x: clampedX,
+        y: clampedY,
+      } as unknown as T;
+    }
+
     default:
       return initial;
   }
@@ -70,8 +91,6 @@ export function distancePointToSegment(p: Point, a: Point, b: Point): number {
   const l2 = (b.x - a.x) ** 2 + (b.y - a.y) ** 2;
   if (l2 === 0) return Math.hypot(p.x - a.x, p.y - a.y);
 
-  // Consider the line extending the segment, parameterized as a + t (b - a).
-  // We find projection of point p onto the line.
   let t = ((p.x - a.x) * (b.x - a.x) + (p.y - a.y) * (b.y - a.y)) / l2;
   t = Math.max(0, Math.min(1, t));
 
@@ -92,7 +111,6 @@ export function isPointInsideAnnotation(
   switch (annotation.type) {
     case 'rectangle': {
       const strokeMargin = Math.max(minHitRadius, annotation.strokeWidth / 2);
-      // Either inside or close to the perimeter
       return (
         point.x >= annotation.x - strokeMargin &&
         point.x <= annotation.x + annotation.width + strokeMargin &&
@@ -102,9 +120,13 @@ export function isPointInsideAnnotation(
     }
 
     case 'arrow': {
-      // Enlarged invisible hit target along the arrow shaft and head
       const hitRadius = Math.max(minHitRadius, annotation.strokeWidth * 1.8);
       return distancePointToSegment(point, annotation.start, annotation.end) <= hitRadius;
+    }
+
+    case 'pin': {
+      const hitRadius = Math.max(PIN_RADIUS, minHitRadius);
+      return Math.hypot(point.x - annotation.x, point.y - annotation.y) <= hitRadius;
     }
 
     default:
