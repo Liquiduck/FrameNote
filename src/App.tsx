@@ -5,12 +5,13 @@ import type { Annotation } from './types/annotation';
 import { useAnnotationDocument } from './hooks/useAnnotationDocument';
 import { useImageLoader } from './hooks/useImageLoader';
 import { useViewport } from './hooks/useViewport';
-import { downloadBlob, renderDocumentToBlob } from './core/export/exportPipeline';
+import { downloadBlob, getExportFilename, renderDocumentToBlob } from './core/export/exportPipeline';
 import { Header } from './components/layout/Header';
 import { CommentsSidebar } from './components/layout/CommentsSidebar';
 import { StatusBar } from './components/layout/StatusBar';
 import { Workspace } from './components/canvas/Workspace';
 import { ConfirmDialog } from './components/common/ConfirmDialog';
+import { ExportDialog } from './components/common/ExportDialog';
 import { NotificationBanner } from './components/common/NotificationBanner';
 
 type PendingLoadAction =
@@ -19,7 +20,12 @@ type PendingLoadAction =
 
 export function App() {
   const [isExporting, setIsExporting] = useState(false);
+  const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
   const [pendingLoad, setPendingLoad] = useState<PendingLoadAction | null>(null);
+  const [isCommentsOpen, setIsCommentsOpen] = useState(
+    typeof window !== 'undefined' ? window.innerWidth > 900 : true
+  );
   const workspaceDimsRef = useRef<Dimensions>({ width: 800, height: 600 });
 
   const {
@@ -45,7 +51,7 @@ export function App() {
     updatePanning,
     stopPanning,
     fitToScreen,
-    resetZoom,
+    actualSize,
     zoomIn,
     zoomOut,
     handleWheel,
@@ -150,24 +156,53 @@ export function App() {
     [document.annotations, document.selectedAnnotationId, setActiveStrokeWidth, updateAnnotation]
   );
 
-  const handleExport = useCallback(async () => {
+  const handleOpenExportDialog = useCallback(() => {
     if (!document.image) return;
+    setExportError(null);
+    setIsExportDialogOpen(true);
+  }, [document.image]);
+
+  const handleExecuteExport = useCallback(async (includeAppendix: boolean) => {
+    if (!document.image || isExporting) return;
+
+    // Capture stable snapshot at export start to prevent concurrent edit drift
+    const imageSnapshot = document.image;
+    const annotationsSnapshot = [...document.annotations];
 
     try {
       setIsExporting(true);
+      setExportError(null);
+
       const blob = await renderDocumentToBlob(
-        document.image,
-        document.annotations,
-        { scale: 1, mimeType: 'image/png' }
+        imageSnapshot,
+        annotationsSnapshot,
+        { scale: 1, mimeType: 'image/png', includeAppendix }
       );
-      const fileName = `${document.title || 'framenote-export'}.png`;
+
+      const fileName = getExportFilename(imageSnapshot.name, includeAppendix);
       downloadBlob(blob, fileName);
+      setIsExportDialogOpen(false);
     } catch (err) {
       console.error('Export failed:', err);
+      setExportError(err instanceof Error ? err.message : 'Export failed. The image may be too large.');
     } finally {
       setIsExporting(false);
     }
-  }, [document]);
+  }, [document, isExporting]);
+
+  const handleZoomInCentered = useCallback(() => {
+    zoomIn(workspaceDimsRef.current, document.image || undefined);
+  }, [zoomIn, document.image]);
+
+  const handleZoomOutCentered = useCallback(() => {
+    zoomOut(workspaceDimsRef.current, document.image || undefined);
+  }, [zoomOut, document.image]);
+
+  const handleActualSizeCentered = useCallback(() => {
+    if (document.image) {
+      actualSize(document.image, workspaceDimsRef.current);
+    }
+  }, [actualSize, document.image]);
 
   // Global Keyboard Shortcuts (Undo, Redo, Zoom, Tool switching, Deletion, Escape)
   useEffect(() => {
@@ -191,15 +226,17 @@ export function App() {
         if (canRedo) redo();
       } else if (e.key === '=' || e.key === '+') {
         e.preventDefault();
-        zoomIn();
+        handleZoomInCentered();
       } else if (e.key === '-') {
         e.preventDefault();
-        zoomOut();
+        handleZoomOutCentered();
       } else if (e.key === '0') {
         e.preventDefault();
-        resetZoom();
+        handleActualSizeCentered();
       } else if (e.key.toLowerCase() === 'v') {
         setActiveTool('select');
+      } else if (e.key.toLowerCase() === 'h') {
+        setActiveTool('hand');
       } else if (e.key.toLowerCase() === 'r') {
         setActiveTool('rectangle');
       } else if (e.key.toLowerCase() === 'a') {
@@ -226,9 +263,9 @@ export function App() {
     canRedo,
     undo,
     redo,
-    zoomIn,
-    zoomOut,
-    resetZoom,
+    handleZoomInCentered,
+    handleZoomOutCentered,
+    handleActualSizeCentered,
     setActiveTool,
     selectAnnotation,
     document.selectedAnnotationId,
@@ -239,16 +276,21 @@ export function App() {
     <div className="fn-app-shell">
       {/* Accessible Error / Notification Banner */}
       <NotificationBanner
-        message={error}
-        onDismiss={clearError}
+        message={error || exportError}
+        onDismiss={() => {
+          clearError();
+          setExportError(null);
+        }}
       />
 
       {/* Top Header */}
       <Header
         document={document}
         onUploadFile={requestLoadFile}
-        onExport={handleExport}
+        onExport={handleOpenExportDialog}
         isExporting={isExporting}
+        isCommentsOpen={isCommentsOpen}
+        onToggleComments={() => setIsCommentsOpen((prev) => !prev)}
       />
 
       {/* Main Studio Body: Workspace + Comments Sidebar */}
@@ -275,6 +317,8 @@ export function App() {
 
         <CommentsSidebar
           document={document}
+          isOpen={isCommentsOpen}
+          onClose={() => setIsCommentsOpen(false)}
           onSelectAnnotation={selectAnnotation}
           onUpdateAnnotation={updateAnnotation}
           onDeleteAnnotation={deleteAnnotation}
@@ -289,9 +333,9 @@ export function App() {
         canRedo={canRedo}
         onUndo={undo}
         onRedo={redo}
-        onZoomIn={zoomIn}
-        onZoomOut={zoomOut}
-        onResetZoom={resetZoom}
+        onZoomIn={handleZoomInCentered}
+        onZoomOut={handleZoomOutCentered}
+        onActualSize={handleActualSizeCentered}
         onFitToScreen={() => {
           if (document.image) {
             fitToScreen(document.image, workspaceDimsRef.current);
@@ -308,6 +352,15 @@ export function App() {
         cancelLabel="Keep Current"
         onConfirm={handleConfirmReplace}
         onCancel={handleCancelReplace}
+      />
+
+      {/* Export Options Modal Dialog */}
+      <ExportDialog
+        isOpen={isExportDialogOpen}
+        document={document}
+        isExporting={isExporting}
+        onExport={handleExecuteExport}
+        onClose={() => setIsExportDialogOpen(false)}
       />
     </div>
   );

@@ -6,6 +6,8 @@ import { IconClear, IconComment } from '../common/Icons';
 
 interface CommentsSidebarProps {
   document: AnnotationDocument;
+  isOpen?: boolean;
+  onClose?: () => void;
   onSelectAnnotation: (id: string | null) => void;
   onUpdateAnnotation: (annotation: PinAnnotation) => void;
   onDeleteAnnotation: (id: string) => void;
@@ -13,6 +15,8 @@ interface CommentsSidebarProps {
 
 export function CommentsSidebar({
   document,
+  isOpen = true,
+  onClose,
   onSelectAnnotation,
   onUpdateAnnotation,
   onDeleteAnnotation,
@@ -41,21 +45,46 @@ export function CommentsSidebar({
     prevPinsLengthRef.current = pinCount;
   }, [pinCount]);
 
+  if (!isOpen) {
+    return null;
+  }
+
   return (
-    <aside
-      className="fn-sidebar"
-      aria-label="Feedback and comments"
-      tabIndex={-1}
-    >
-      <div className="fn-sidebar-header">
-        <h2 className="fn-sidebar-title">Comments & Notes</h2>
-        <span
-          className="fn-sidebar-counter"
-          aria-label={`${pinCount} ${pinCount === 1 ? 'comment' : 'comments'}`}
-        >
-          {pinCount}
-        </span>
-      </div>
+    <>
+      {/* Mobile backdrop */}
+      <div
+        className="fn-sidebar-backdrop"
+        onClick={onClose}
+        aria-hidden="true"
+      />
+      <aside
+        className={`fn-sidebar ${isOpen ? 'is-open' : ''}`}
+        aria-label="Feedback and comments"
+        tabIndex={-1}
+      >
+        <div className="fn-sidebar-header">
+          <div className="fn-sidebar-header-left">
+            <h2 className="fn-sidebar-title">Comments & Notes</h2>
+            <span
+              className="fn-sidebar-counter"
+              aria-label={`${pinCount} ${pinCount === 1 ? 'comment' : 'comments'}`}
+            >
+              {pinCount}
+            </span>
+          </div>
+
+          {onClose && (
+            <button
+              type="button"
+              className="fn-sidebar-close-btn"
+              onClick={onClose}
+              title="Close comments panel"
+              aria-label="Close comments panel"
+            >
+              ✕
+            </button>
+          )}
+        </div>
 
       <div
         ref={sidebarContentRef}
@@ -99,6 +128,7 @@ export function CommentsSidebar({
         )}
       </div>
     </aside>
+  </>
   );
 }
 

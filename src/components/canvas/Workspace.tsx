@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type DragEvent } from 'react';
 import type { Annotation, AnnotationTool } from '../../types/annotation';
 import type { AnnotationDocument } from '../../types/document';
+import type { Dimensions, Point } from '../../types/geometry';
 import type { ViewportState } from '../../types/viewport';
 import { IconUpload } from '../common/Icons';
 import { CanvasViewport } from './CanvasViewport';
@@ -11,10 +12,10 @@ interface WorkspaceProps {
   document: AnnotationDocument;
   viewport: ViewportState;
   isPanning: boolean;
-  onStartPanning: (screenPoint: { x: number; y: number }) => void;
-  onUpdatePanning: (screenPoint: { x: number; y: number }) => void;
+  onStartPanning: (screenPoint: Point) => void;
+  onUpdatePanning: (screenPoint: Point, bounds?: { image?: Dimensions; container?: Dimensions }) => void;
   onStopPanning: () => void;
-  onWheel: (e: React.WheelEvent<HTMLElement>, containerRect: DOMRect) => void;
+  onWheel: (e: React.WheelEvent<HTMLElement>, containerRect: DOMRect, image?: Dimensions) => void;
   onUploadFile: (file: File) => void;
   onTrySample: () => void;
   onSelectTool: (tool: AnnotationTool) => void;
@@ -48,6 +49,7 @@ export function Workspace({
 }: WorkspaceProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [isWorkspaceDragOver, setIsWorkspaceDragOver] = useState(false);
+  const [isSpacePressed, setIsSpacePressed] = useState(false);
   const image = document.image;
 
   // Selected annotation (if any) to drive style controls
@@ -58,7 +60,9 @@ export function Workspace({
   const displayColor = selectedAnnotation ? selectedAnnotation.color : document.activeColor;
   const displayStrokeWidth = selectedAnnotation ? selectedAnnotation.strokeWidth : document.activeStrokeWidth;
 
-  // Auto-fit image to container whenever a new image is loaded
+  const isPanningMode = isSpacePressed || document.activeTool === 'hand';
+
+  // Auto-fit image when a new image loads
   useEffect(() => {
     if (image && containerRef.current) {
       const rect = containerRef.current.getBoundingClientRect();
@@ -68,37 +72,101 @@ export function Workspace({
     }
   }, [image, onFitToScreen]);
 
-  // Handle window resizing
+  // Handle container resizing via ResizeObserver
   useEffect(() => {
-    const handleResize = () => {
-      if (image && containerRef.current) {
-        const rect = containerRef.current.getBoundingClientRect();
-        if (rect.width > 0 && rect.height > 0) {
-          onFitToScreen({ width: rect.width, height: rect.height });
+    const el = containerRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+
+    const ro = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const { width, height } = entry.contentRect;
+        if (width > 0 && height > 0) {
+          // Keep image centered/fitted when workspace size shifts
+          onFitToScreen({ width, height });
         }
+      }
+    });
+
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [onFitToScreen]);
+
+  // Spacebar pan mode: ignore when user is actively editing comments or input fields
+  useEffect(() => {
+    const isTargetEditable = (target: EventTarget | null) => {
+      const el = target as HTMLElement | null;
+      return (
+        el?.isContentEditable ||
+        ['INPUT', 'TEXTAREA', 'SELECT'].includes(el?.tagName || '')
+      );
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (isTargetEditable(e.target)) return;
+      if (e.code === 'Space' && !e.repeat) {
+        e.preventDefault();
+        setIsSpacePressed(true);
       }
     };
 
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, [image, onFitToScreen]);
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.code === 'Space') {
+        setIsSpacePressed(false);
+      }
+    };
 
-  const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
-    // Only pan workspace background when middle button or clicked empty region
-    if (e.button === 1 || e.target === containerRef.current) {
+    const handleWindowBlur = () => {
+      setIsSpacePressed(false);
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('blur', handleWindowBlur);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('blur', handleWindowBlur);
+    };
+  }, []);
+
+  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    // Primary button with hand/space mode, middle mouse button, or clicking empty workspace background
+    const isMiddleClick = e.button === 1;
+    const isPrimaryWithPan = e.button === 0 && (isPanningMode || e.target === containerRef.current);
+
+    if (isMiddleClick || isPrimaryWithPan) {
       e.preventDefault();
+      try {
+        e.currentTarget.setPointerCapture(e.pointerId);
+      } catch {
+        // Fallback for non-supporting test environments
+      }
       onStartPanning({ x: e.clientX, y: e.clientY });
     }
   };
 
-  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     if (isPanning) {
-      onUpdatePanning({ x: e.clientX, y: e.clientY });
+      e.preventDefault();
+      const rect = containerRef.current?.getBoundingClientRect();
+      const bounds =
+        image && rect
+          ? { image, container: { width: rect.width, height: rect.height } }
+          : undefined;
+      onUpdatePanning({ x: e.clientX, y: e.clientY }, bounds);
     }
   };
 
-  const handleMouseUp = () => {
+  const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
     if (isPanning) {
+      try {
+        if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+          e.currentTarget.releasePointerCapture(e.pointerId);
+        }
+      } catch {
+        // Ignore
+      }
       onStopPanning();
     }
   };
@@ -106,7 +174,7 @@ export function Workspace({
   const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
     if (containerRef.current) {
       const rect = containerRef.current.getBoundingClientRect();
-      onWheel(e, rect);
+      onWheel(e, rect, image || undefined);
     }
   };
 
@@ -137,15 +205,20 @@ export function Workspace({
     }
   };
 
+  const cursorStyle = isPanning ? 'grabbing' : isPanningMode ? 'grab' : 'default';
+
   return (
     <main
       ref={containerRef}
-      className={`fn-workspace ${isWorkspaceDragOver ? 'is-drag-active' : ''}`}
-      style={{ cursor: isPanning ? 'grabbing' : 'default' }}
-      onMouseDown={handleMouseDown}
-      onMouseMove={handleMouseMove}
-      onMouseUp={handleMouseUp}
-      onMouseLeave={handleMouseUp}
+      className={`fn-workspace ${isWorkspaceDragOver ? 'is-drag-active' : ''} ${
+        isPanningMode ? 'is-panning-mode' : ''
+      }`}
+      style={{ cursor: cursorStyle }}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerUp}
+      onLostPointerCapture={handlePointerUp}
       onWheel={handleWheel}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
@@ -187,6 +260,7 @@ export function Workspace({
           activeColor={document.activeColor}
           activeStrokeWidth={document.activeStrokeWidth}
           viewport={viewport}
+          isPanningMode={isPanningMode}
           onSelectAnnotation={onSelectAnnotation}
           onCommitAnnotation={onCommitAnnotation}
           onUpdateAnnotation={onUpdateAnnotation}

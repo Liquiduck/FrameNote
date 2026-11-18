@@ -2,6 +2,7 @@ import type { Point } from './geometry';
 
 export type AnnotationTool =
   | 'select'
+  | 'hand'
   | 'rectangle'
   | 'arrow'
   | 'pin'

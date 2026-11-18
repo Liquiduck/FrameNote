@@ -1,13 +1,16 @@
 import type { ChangeEvent } from 'react';
 import { useRef } from 'react';
 import type { AnnotationDocument } from '../../types/document';
-import { IconDownload, IconLogo, IconUpload } from '../common/Icons';
+import { getAllPins } from '../../core/annotation/pinGeometry';
+import { IconComment, IconDownload, IconLogo, IconUpload } from '../common/Icons';
 
 interface HeaderProps {
   document: AnnotationDocument;
   onUploadFile: (file: File) => void;
   onExport: () => void;
   isExporting?: boolean;
+  isCommentsOpen?: boolean;
+  onToggleComments?: () => void;
 }
 
 export function Header({
@@ -15,8 +18,11 @@ export function Header({
   onUploadFile,
   onExport,
   isExporting = false,
+  isCommentsOpen = true,
+  onToggleComments,
 }: HeaderProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const pinCount = getAllPins(document.annotations).length;
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -62,6 +68,28 @@ export function Header({
           onChange={handleFileChange}
           aria-label="Upload screenshot"
         />
+
+        {/* Toggle Comments Sidebar / Drawer */}
+        {onToggleComments && (
+          <button
+            type="button"
+            className={`fn-btn-secondary fn-comments-toggle-btn ${
+              isCommentsOpen ? 'is-active' : ''
+            }`}
+            onClick={onToggleComments}
+            title={isCommentsOpen ? 'Hide comments panel' : 'Show comments panel'}
+            aria-label={isCommentsOpen ? 'Hide comments panel' : 'Show comments panel'}
+            aria-expanded={isCommentsOpen}
+          >
+            <IconComment />
+            <span>Comments</span>
+            {pinCount > 0 && (
+              <span className="fn-header-badge" aria-hidden="true">
+                {pinCount}
+              </span>
+            )}
+          </button>
+        )}
 
         <button
           type="button"

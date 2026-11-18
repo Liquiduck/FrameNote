@@ -3,6 +3,7 @@ import {
   IconArrow,
   IconBlur,
   IconCallout,
+  IconHand,
   IconPen,
   IconRectangle,
   IconSelect,
@@ -32,6 +33,7 @@ const TOOLS: Array<{
   implemented: boolean;
 }> = [
   { id: 'select', label: 'Select & Move', icon: IconSelect, shortcut: 'V', implemented: true },
+  { id: 'hand', label: 'Hand (Pan Canvas)', icon: IconHand, shortcut: 'H', implemented: true },
   { id: 'rectangle', label: 'Rectangle', icon: IconRectangle, shortcut: 'R', implemented: true },
   { id: 'arrow', label: 'Arrow', icon: IconArrow, shortcut: 'A', implemented: true },
   { id: 'pin', label: 'Comment Pin', icon: IconCallout, shortcut: 'C', implemented: true },
@@ -60,7 +62,7 @@ export function DrawingToolbar({
             const isActive = activeTool === tool.id;
             return (
               <div key={tool.id} style={{ display: 'inline-flex', alignItems: 'center' }}>
-                {index === 1 && <div className="fn-toolbar-divider" />}
+                {index === 2 && <div className="fn-toolbar-divider" />}
                 <button
                   type="button"
                   className={`fn-toolbar-btn ${isActive ? 'is-active' : ''}`}

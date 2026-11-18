@@ -1,5 +1,6 @@
 import type { AnnotationDocument } from '../../types/document';
 import type { ViewportState } from '../../types/viewport';
+import { MAX_ZOOM, MIN_ZOOM } from '../../types/viewport';
 import { IconFit, IconRedo, IconUndo, IconZoomIn, IconZoomOut } from '../common/Icons';
 
 interface StatusBarProps {
@@ -11,7 +12,7 @@ interface StatusBarProps {
   onRedo: () => void;
   onZoomIn: () => void;
   onZoomOut: () => void;
-  onResetZoom: () => void;
+  onActualSize: () => void;
   onFitToScreen: () => void;
 }
 
@@ -24,7 +25,7 @@ export function StatusBar({
   onRedo,
   onZoomIn,
   onZoomOut,
-  onResetZoom,
+  onActualSize,
   onFitToScreen,
 }: StatusBarProps) {
   const zoomPercent = Math.round(viewport.zoom * 100);
@@ -32,6 +33,9 @@ export function StatusBar({
   const imageDims = document.image
     ? `${document.image.width} × ${document.image.height} px`
     : null;
+
+  const isAtMinZoom = viewport.zoom <= MIN_ZOOM;
+  const isAtMaxZoom = viewport.zoom >= MAX_ZOOM;
 
   return (
     <footer className="fn-statusbar" role="status" aria-label="Editor status">
@@ -83,6 +87,7 @@ export function StatusBar({
             type="button"
             className="fn-zoom-btn"
             onClick={onZoomOut}
+            disabled={isAtMinZoom}
             title="Zoom out (-)"
             aria-label="Zoom out"
           >
@@ -92,8 +97,9 @@ export function StatusBar({
           <button
             type="button"
             className="fn-zoom-btn fn-zoom-value"
-            onClick={onResetZoom}
-            title="Click to reset to 100%"
+            onClick={onActualSize}
+            title="Click to reset to Actual Size (1 image pixel per CSS pixel / 100%)"
+            aria-label={`Current zoom ${zoomPercent}%. Click for Actual Size 100%`}
           >
             {zoomPercent}%
           </button>
@@ -102,6 +108,7 @@ export function StatusBar({
             type="button"
             className="fn-zoom-btn"
             onClick={onZoomIn}
+            disabled={isAtMaxZoom}
             title="Zoom in (+)"
             aria-label="Zoom in"
           >
@@ -112,8 +119,8 @@ export function StatusBar({
             type="button"
             className="fn-zoom-btn"
             onClick={onFitToScreen}
-            title="Fit to view (0)"
-            aria-label="Fit to view"
+            title="Fit image to screen (0)"
+            aria-label="Fit image to screen"
           >
             <IconFit />
           </button>

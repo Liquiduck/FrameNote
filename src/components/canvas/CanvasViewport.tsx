@@ -14,6 +14,7 @@ interface CanvasViewportProps {
   activeColor: string;
   activeStrokeWidth: number;
   viewport: ViewportState;
+  isPanningMode?: boolean;
   onSelectAnnotation: (id: string | null) => void;
   onCommitAnnotation: (annotation: Annotation) => void;
   onUpdateAnnotation: (annotation: Annotation) => void;
@@ -27,6 +28,7 @@ export function CanvasViewport({
   activeColor,
   activeStrokeWidth,
   viewport,
+  isPanningMode = false,
   onSelectAnnotation,
   onCommitAnnotation,
   onUpdateAnnotation,
@@ -66,7 +68,17 @@ export function CanvasViewport({
     transform: `translate(${viewport.pan.x}px, ${viewport.pan.y}px) scale(${viewport.zoom})`,
   };
 
-  const isDrawing = activeTool === 'rectangle' || activeTool === 'arrow' || activeTool === 'pin';
+  const isDrawing =
+    !isPanningMode &&
+    (activeTool === 'rectangle' || activeTool === 'arrow' || activeTool === 'pin');
+
+  const svgCursor = isPanningMode
+    ? 'inherit'
+    : isDrawing
+    ? 'crosshair'
+    : movingAnnotation
+    ? 'grabbing'
+    : 'default';
 
   return (
     <div className="fn-viewport-stage" style={transformStyle}>
@@ -94,7 +106,10 @@ export function CanvasViewport({
           width={image.width}
           height={image.height}
           xmlns="http://www.w3.org/2000/svg"
-          style={{ cursor: isDrawing ? 'crosshair' : movingAnnotation ? 'grabbing' : 'default' }}
+          style={{
+            cursor: svgCursor,
+            pointerEvents: isPanningMode ? 'none' : 'auto',
+          }}
           {...pointerHandlers}
         >
           {/* Committed Annotations */}
