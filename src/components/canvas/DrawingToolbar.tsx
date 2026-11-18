@@ -17,6 +17,7 @@ interface DrawingToolbarProps {
   activeTool: AnnotationTool;
   activeColor: string;
   activeStrokeWidth: number;
+  hasSelection?: boolean;
   onSelectTool: (tool: AnnotationTool) => void;
   onSelectColor: (color: string) => void;
   onSelectStrokeWidth: (width: number) => void;
@@ -32,7 +33,7 @@ const TOOLS: Array<{
 }> = [
   { id: 'select', label: 'Select & Move', icon: IconSelect, shortcut: 'V', implemented: true },
   { id: 'rectangle', label: 'Rectangle', icon: IconRectangle, shortcut: 'R', implemented: true },
-  { id: 'arrow', label: 'Arrow (coming soon)', icon: IconArrow, shortcut: 'A', implemented: false },
+  { id: 'arrow', label: 'Arrow', icon: IconArrow, shortcut: 'A', implemented: true },
   { id: 'pen', label: 'Freehand Pen (coming soon)', icon: IconPen, shortcut: 'P', implemented: false },
   { id: 'text', label: 'Text (coming soon)', icon: IconText, shortcut: 'T', implemented: false },
   { id: 'callout', label: 'Callout (coming soon)', icon: IconCallout, shortcut: 'C', implemented: false },
@@ -43,6 +44,7 @@ export function DrawingToolbar({
   activeTool,
   activeColor,
   activeStrokeWidth,
+  hasSelection = false,
   onSelectTool,
   onSelectColor,
   onSelectStrokeWidth,
@@ -79,7 +81,11 @@ export function DrawingToolbar({
         <div className="fn-toolbar-divider" />
 
         {/* Color Presets */}
-        <div className="fn-toolbar-group fn-color-palette" role="radiogroup" aria-label="Stroke color">
+        <div
+          className="fn-toolbar-group fn-color-palette"
+          role="radiogroup"
+          aria-label={hasSelection ? 'Change selected annotation color' : 'Default stroke color'}
+        >
           {ANNOTATION_COLORS.map((c) => {
             const isSelected = activeColor.toLowerCase() === c.value.toLowerCase();
             return (
@@ -89,7 +95,7 @@ export function DrawingToolbar({
                 className={`fn-color-swatch ${isSelected ? 'is-selected' : ''}`}
                 style={{ backgroundColor: c.value }}
                 onClick={() => onSelectColor(c.value)}
-                title={`Color: ${c.label}`}
+                title={hasSelection ? `Apply color: ${c.label}` : `Color: ${c.label}`}
                 aria-label={`Color: ${c.label}`}
                 aria-checked={isSelected}
                 role="radio"
@@ -101,7 +107,11 @@ export function DrawingToolbar({
         <div className="fn-toolbar-divider" />
 
         {/* Stroke Width Presets */}
-        <div className="fn-toolbar-group fn-width-palette" role="radiogroup" aria-label="Stroke width">
+        <div
+          className="fn-toolbar-group fn-width-palette"
+          role="radiogroup"
+          aria-label={hasSelection ? 'Change selected annotation stroke width' : 'Default stroke width'}
+        >
           {STROKE_WIDTH_PRESETS.map((sw) => {
             const isSelected = activeStrokeWidth === sw.value;
             return (
@@ -110,7 +120,7 @@ export function DrawingToolbar({
                 type="button"
                 className={`fn-width-btn ${isSelected ? 'is-selected' : ''}`}
                 onClick={() => onSelectStrokeWidth(sw.value)}
-                title={`Stroke Width: ${sw.label} (${sw.value}px)`}
+                title={hasSelection ? `Apply width: ${sw.label} (${sw.value}px)` : `Stroke Width: ${sw.label} (${sw.value}px)`}
                 aria-label={`Stroke Width: ${sw.label}`}
                 aria-checked={isSelected}
                 role="radio"

@@ -1,8 +1,9 @@
 import { useEffect } from 'react';
-import type { Annotation, AnnotationTool, RectangleAnnotation } from '../../types/annotation';
+import type { Annotation, AnnotationTool } from '../../types/annotation';
 import type { LoadedImage } from '../../types/document';
 import type { ViewportState } from '../../types/viewport';
-import { useRectangleDrawing } from '../../hooks/useRectangleDrawing';
+import { useCanvasInteraction } from '../../hooks/useCanvasInteraction';
+import { calculateArrowGeometry } from '../../core/annotation/arrowGeometry';
 
 interface CanvasViewportProps {
   image: LoadedImage;
@@ -13,7 +14,8 @@ interface CanvasViewportProps {
   activeStrokeWidth: number;
   viewport: ViewportState;
   onSelectAnnotation: (id: string | null) => void;
-  onCommitAnnotation: (annotation: RectangleAnnotation) => void;
+  onCommitAnnotation: (annotation: Annotation) => void;
+  onUpdateAnnotation: (annotation: Annotation) => void;
 }
 
 export function CanvasViewport({
@@ -26,35 +28,44 @@ export function CanvasViewport({
   viewport,
   onSelectAnnotation,
   onCommitAnnotation,
+  onUpdateAnnotation,
 }: CanvasViewportProps) {
   const {
     draftAnnotation,
-    cancelDrawing,
+    movingAnnotation,
+    cancelInteraction,
     pointerHandlers,
-  } = useRectangleDrawing({
+  } = useCanvasInteraction({
     activeTool,
     activeColor,
     activeStrokeWidth,
     imageDimensions: { width: image.width, height: image.height },
+    annotations,
+    selectedAnnotationId,
+    onSelectAnnotation,
     onCommitAnnotation,
+    onUpdateAnnotation,
   });
 
-  // Cancel draft drawing on Escape key
+  // Cancel draft drawing or movement on Escape key; also clear selection if idle
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        cancelDrawing();
+        cancelInteraction();
+        if (selectedAnnotationId) {
+          onSelectAnnotation(null);
+        }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [cancelDrawing]);
+  }, [cancelInteraction, onSelectAnnotation, selectedAnnotationId]);
 
   const transformStyle = {
     transform: `translate(${viewport.pan.x}px, ${viewport.pan.y}px) scale(${viewport.zoom})`,
   };
 
-  const isDrawingTool = activeTool === 'rectangle';
+  const isDrawing = activeTool === 'rectangle' || activeTool === 'arrow';
 
   return (
     <div className="fn-viewport-stage" style={transformStyle}>
@@ -82,43 +93,34 @@ export function CanvasViewport({
           width={image.width}
           height={image.height}
           xmlns="http://www.w3.org/2000/svg"
-          style={{ cursor: isDrawingTool ? 'crosshair' : 'default' }}
+          style={{ cursor: isDrawing ? 'crosshair' : movingAnnotation ? 'grabbing' : 'default' }}
           {...pointerHandlers}
         >
           {/* Committed Annotations */}
           {annotations.map((annotation) => {
-            const isSelected = annotation.id === selectedAnnotationId;
+            // If currently moving, substitute the transient moving position
+            const activeAnn =
+              movingAnnotation && movingAnnotation.id === annotation.id
+                ? movingAnnotation
+                : annotation;
+            const isSelected = activeAnn.id === selectedAnnotationId;
+
             return (
               <g
-                key={annotation.id}
-                onClick={(e) => {
-                  if (activeTool === 'select') {
-                    e.stopPropagation();
-                    onSelectAnnotation(annotation.id);
-                  }
-                }}
-                style={{ cursor: activeTool === 'select' ? 'pointer' : 'crosshair' }}
+                key={activeAnn.id}
+                className={`fn-annotation-group ${isSelected ? 'is-selected' : ''}`}
+                style={{ cursor: activeTool === 'select' ? 'grab' : isDrawing ? 'crosshair' : 'default' }}
               >
-                {renderSvgAnnotation(annotation, isSelected)}
+                {renderSvgAnnotation(activeAnn, isSelected)}
               </g>
             );
           })}
 
-          {/* Active Draft Rectangle */}
+          {/* Active Draft (Rectangle or Arrow preview) */}
           {draftAnnotation && (
-            <rect
-              className="fn-draft-rectangle"
-              x={draftAnnotation.x}
-              y={draftAnnotation.y}
-              width={draftAnnotation.width}
-              height={draftAnnotation.height}
-              fill="transparent"
-              stroke={draftAnnotation.color}
-              strokeWidth={draftAnnotation.strokeWidth}
-              strokeLinejoin="round"
-              strokeLinecap="round"
-              rx={2}
-            />
+            <g className="fn-draft-layer" pointerEvents="none">
+              {renderSvgAnnotation(draftAnnotation, false, true)}
+            </g>
           )}
         </svg>
       </div>
@@ -126,7 +128,10 @@ export function CanvasViewport({
   );
 }
 
-function renderSvgAnnotation(annotation: Annotation, isSelected: boolean) {
+/**
+ * Render individual annotations with optional editor selection indicator and enlarged invisible hit targets.
+ */
+function renderSvgAnnotation(annotation: Annotation, isSelected: boolean, isDraft = false) {
   const strokeColor = isSelected ? '#4f46e5' : annotation.color;
   const strokeWidth = annotation.strokeWidth;
 
@@ -134,22 +139,37 @@ function renderSvgAnnotation(annotation: Annotation, isSelected: boolean) {
     case 'rectangle':
       return (
         <g>
-          {/* Selection halo if selected */}
+          {/* Enlarged invisible hit target for easier clicking */}
+          <rect
+            x={annotation.x}
+            y={annotation.y}
+            width={annotation.width}
+            height={annotation.height}
+            fill="transparent"
+            stroke="transparent"
+            strokeWidth={Math.max(strokeWidth + 16, 24)}
+          />
+
+          {/* Editor-only selection halo (never in export) */}
           {isSelected && (
             <rect
-              x={annotation.x - 3}
-              y={annotation.y - 3}
-              width={annotation.width + 6}
-              height={annotation.height + 6}
+              x={annotation.x - 4}
+              y={annotation.y - 4}
+              width={annotation.width + 8}
+              height={annotation.height + 8}
               fill="none"
-              stroke="#6366f1"
-              strokeWidth={Math.max(1, strokeWidth * 0.5)}
+              stroke="#4f46e5"
+              strokeWidth={Math.max(1.5, strokeWidth * 0.4)}
               strokeDasharray="4 3"
               rx={4}
-              opacity={0.8}
+              opacity={0.9}
+              pointerEvents="none"
             />
           )}
+
+          {/* The visible rectangle */}
           <rect
+            className={isDraft ? 'fn-draft-rectangle' : undefined}
             x={annotation.x}
             y={annotation.y}
             width={annotation.width}
@@ -164,18 +184,78 @@ function renderSvgAnnotation(annotation: Annotation, isSelected: boolean) {
         </g>
       );
 
-    case 'arrow':
+    case 'arrow': {
+      const geom = calculateArrowGeometry(annotation.start, annotation.end, strokeWidth);
+      const head = geom.head;
+      const headPath = `M ${head.tip.x} ${head.tip.y} L ${head.leftBarb.x} ${head.leftBarb.y} L ${head.rightBarb.x} ${head.rightBarb.y} Z`;
+
       return (
-        <line
-          x1={annotation.start.x}
-          y1={annotation.start.y}
-          x2={annotation.end.x}
-          y2={annotation.end.y}
-          stroke={strokeColor}
-          strokeWidth={strokeWidth}
-          strokeLinecap="round"
-        />
+        <g>
+          {/* Enlarged invisible hit target along the entire shaft and arrowhead */}
+          <line
+            x1={annotation.start.x}
+            y1={annotation.start.y}
+            x2={annotation.end.x}
+            y2={annotation.end.y}
+            stroke="transparent"
+            strokeWidth={Math.max(strokeWidth + 20, 26)}
+            strokeLinecap="round"
+          />
+
+          {/* Editor-only selection indicators (control rings at tail and tip) */}
+          {isSelected && (
+            <g pointerEvents="none">
+              <line
+                x1={annotation.start.x}
+                y1={annotation.start.y}
+                x2={annotation.end.x}
+                y2={annotation.end.y}
+                stroke="#4f46e5"
+                strokeWidth={strokeWidth + 6}
+                strokeLinecap="round"
+                opacity={0.3}
+              />
+              <circle
+                cx={annotation.start.x}
+                cy={annotation.start.y}
+                r={5}
+                fill="#4f46e5"
+                stroke="#ffffff"
+                strokeWidth={2}
+              />
+              <circle
+                cx={annotation.end.x}
+                cy={annotation.end.y}
+                r={5}
+                fill="#4f46e5"
+                stroke="#ffffff"
+                strokeWidth={2}
+              />
+            </g>
+          )}
+
+          {/* Visible Arrow Shaft */}
+          <line
+            x1={geom.start.x}
+            y1={geom.start.y}
+            x2={geom.end.x}
+            y2={geom.end.y}
+            stroke={strokeColor}
+            strokeWidth={strokeWidth}
+            strokeLinecap="round"
+          />
+
+          {/* Visible Arrow Head (solid fill with matching color) */}
+          <path
+            d={headPath}
+            fill={strokeColor}
+            stroke={strokeColor}
+            strokeWidth={Math.min(2, strokeWidth * 0.5)}
+            strokeLinejoin="round"
+          />
+        </g>
       );
+    }
 
     case 'pen':
       if (annotation.points.length < 2) return null;

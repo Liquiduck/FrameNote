@@ -1,5 +1,6 @@
 import type { Annotation } from '../../types/annotation';
 import type { LoadedImage } from '../../types/document';
+import { calculateArrowGeometry } from '../annotation/arrowGeometry';
 
 export interface ExportOptions {
   readonly scale?: number; // 1 = 1x native resolution, 2 = 2x Retina
@@ -11,6 +12,7 @@ export interface ExportOptions {
 /**
  * Renders the base image and all annotations (defined in native image coordinates)
  * to an off-screen HTML5 canvas, and produces a high-fidelity PNG blob.
+ * Selection indicators and hit targets are never rendered into the export.
  */
 export async function renderDocumentToBlob(
   image: LoadedImage,
@@ -97,7 +99,7 @@ function renderAnnotationToCanvas(
 
   switch (annotation.type) {
     case 'rectangle': {
-      if (annotation.fill) {
+      if (annotation.fill && annotation.fill !== 'transparent') {
         ctx.fillStyle = annotation.fill;
         ctx.fillRect(annotation.x, annotation.y, annotation.width, annotation.height);
       }
@@ -106,28 +108,19 @@ function renderAnnotationToCanvas(
     }
 
     case 'arrow': {
-      const { start, end } = annotation;
-      const headLength = Math.max(16, annotation.strokeWidth * 3);
-      const dx = end.x - start.x;
-      const dy = end.y - start.y;
-      const angle = Math.atan2(dy, dx);
+      const geom = calculateArrowGeometry(annotation.start, annotation.end, annotation.strokeWidth);
 
+      // Shaft
       ctx.beginPath();
-      ctx.moveTo(start.x, start.y);
-      ctx.lineTo(end.x, end.y);
+      ctx.moveTo(geom.start.x, geom.start.y);
+      ctx.lineTo(geom.end.x, geom.end.y);
       ctx.stroke();
 
-      // Arrow head
+      // Solid Arrow Head using the shared geometry calculation
       ctx.beginPath();
-      ctx.moveTo(end.x, end.y);
-      ctx.lineTo(
-        end.x - headLength * Math.cos(angle - Math.PI / 6),
-        end.y - headLength * Math.sin(angle - Math.PI / 6)
-      );
-      ctx.lineTo(
-        end.x - headLength * Math.cos(angle + Math.PI / 6),
-        end.y - headLength * Math.sin(angle + Math.PI / 6)
-      );
+      ctx.moveTo(geom.head.tip.x, geom.head.tip.y);
+      ctx.lineTo(geom.head.leftBarb.x, geom.head.leftBarb.y);
+      ctx.lineTo(geom.head.rightBarb.x, geom.head.rightBarb.y);
       ctx.closePath();
       ctx.fill();
       break;
@@ -167,7 +160,6 @@ function renderAnnotationToCanvas(
     }
 
     case 'blur': {
-      // In drawing phase, pixelation/blur filter will be applied
       ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
       ctx.fillRect(annotation.x, annotation.y, annotation.width, annotation.height);
       break;

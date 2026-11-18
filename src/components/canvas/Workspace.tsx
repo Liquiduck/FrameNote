@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type DragEvent } from 'react';
-import type { AnnotationTool, RectangleAnnotation } from '../../types/annotation';
+import type { Annotation, AnnotationTool } from '../../types/annotation';
 import type { AnnotationDocument } from '../../types/document';
 import type { ViewportState } from '../../types/viewport';
 import { IconUpload } from '../common/Icons';
@@ -21,7 +21,8 @@ interface WorkspaceProps {
   onSelectColor: (color: string) => void;
   onSelectStrokeWidth: (width: number) => void;
   onSelectAnnotation: (id: string | null) => void;
-  onCommitAnnotation: (annotation: RectangleAnnotation) => void;
+  onCommitAnnotation: (annotation: Annotation) => void;
+  onUpdateAnnotation: (annotation: Annotation) => void;
   onFitToScreen: (containerDims: { width: number; height: number }) => void;
   isLoading?: boolean;
 }
@@ -41,12 +42,21 @@ export function Workspace({
   onSelectStrokeWidth,
   onSelectAnnotation,
   onCommitAnnotation,
+  onUpdateAnnotation,
   onFitToScreen,
   isLoading = false,
 }: WorkspaceProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [isWorkspaceDragOver, setIsWorkspaceDragOver] = useState(false);
   const image = document.image;
+
+  // Selected annotation (if any) to drive style controls
+  const selectedAnnotation = document.annotations.find(
+    (a) => a.id === document.selectedAnnotationId
+  );
+
+  const displayColor = selectedAnnotation ? selectedAnnotation.color : document.activeColor;
+  const displayStrokeWidth = selectedAnnotation ? selectedAnnotation.strokeWidth : document.activeStrokeWidth;
 
   // Auto-fit image to container whenever a new image is loaded
   useEffect(() => {
@@ -158,8 +168,9 @@ export function Workspace({
       {image && (
         <DrawingToolbar
           activeTool={document.activeTool}
-          activeColor={document.activeColor}
-          activeStrokeWidth={document.activeStrokeWidth}
+          activeColor={displayColor}
+          activeStrokeWidth={displayStrokeWidth}
+          hasSelection={Boolean(selectedAnnotation)}
           onSelectTool={onSelectTool}
           onSelectColor={onSelectColor}
           onSelectStrokeWidth={onSelectStrokeWidth}
@@ -178,6 +189,7 @@ export function Workspace({
           viewport={viewport}
           onSelectAnnotation={onSelectAnnotation}
           onCommitAnnotation={onCommitAnnotation}
+          onUpdateAnnotation={onUpdateAnnotation}
         />
       ) : (
         <EmptyState

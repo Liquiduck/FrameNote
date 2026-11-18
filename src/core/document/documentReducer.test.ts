@@ -3,7 +3,7 @@ import {
   INITIAL_DOCUMENT,
   documentReducer,
 } from './documentReducer';
-import type { RectangleAnnotation } from '../../types/annotation';
+import type { ArrowAnnotation, RectangleAnnotation } from '../../types/annotation';
 import type { LoadedImage } from '../../types/document';
 
 describe('documentReducer', () => {
@@ -25,6 +25,16 @@ describe('documentReducer', () => {
     y: 150,
     width: 300,
     height: 200,
+  };
+
+  const sampleArrow: ArrowAnnotation = {
+    id: 'arrow-1',
+    type: 'arrow',
+    createdAt: Date.now() + 10,
+    color: '#ef4444',
+    strokeWidth: 4,
+    start: { x: 50, y: 50 },
+    end: { x: 200, y: 200 },
   };
 
   it('sets image and initializes document title', () => {
@@ -73,6 +83,71 @@ describe('documentReducer', () => {
 
     expect(state.annotations).toHaveLength(0);
     expect(state.selectedAnnotationId).toBeNull();
+  });
+
+  it('deletes only the targeted annotation and retains others', () => {
+    let state = documentReducer(INITIAL_DOCUMENT, {
+      type: 'SET_IMAGE',
+      payload: sampleImage,
+    });
+
+    state = documentReducer(state, {
+      type: 'ADD_ANNOTATION',
+      payload: sampleRect,
+    });
+    state = documentReducer(state, {
+      type: 'ADD_ANNOTATION',
+      payload: sampleArrow,
+    });
+
+    expect(state.annotations).toHaveLength(2);
+    expect(state.selectedAnnotationId).toBe('arrow-1');
+
+    // Delete the first one (rect-1)
+    state = documentReducer(state, {
+      type: 'DELETE_ANNOTATION',
+      payload: 'rect-1',
+    });
+
+    expect(state.annotations).toHaveLength(1);
+    expect(state.annotations[0]?.id).toBe('arrow-1');
+    // Selection was arrow-1, which was not deleted, so it remains selected
+    expect(state.selectedAnnotationId).toBe('arrow-1');
+  });
+
+  it('cleans up comments when an annotation is deleted', () => {
+    let state = documentReducer(INITIAL_DOCUMENT, {
+      type: 'SET_IMAGE',
+      payload: sampleImage,
+    });
+
+    state = documentReducer(state, {
+      type: 'ADD_ANNOTATION',
+      payload: sampleRect,
+    });
+
+    state = documentReducer(state, {
+      type: 'ADD_COMMENT',
+      payload: {
+        annotationId: 'rect-1',
+        message: {
+          id: 'msg-1',
+          author: 'Alex',
+          content: 'Needs higher contrast',
+          timestamp: Date.now(),
+        },
+      },
+    });
+
+    expect(state.comments).toHaveLength(1);
+
+    state = documentReducer(state, {
+      type: 'DELETE_ANNOTATION',
+      payload: 'rect-1',
+    });
+
+    expect(state.annotations).toHaveLength(0);
+    expect(state.comments).toHaveLength(0);
   });
 
   it('adds comments to annotation threads', () => {

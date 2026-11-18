@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Dimensions } from './types/geometry';
 import type { LoadedImage } from './types/document';
-import type { RectangleAnnotation } from './types/annotation';
+import type { Annotation } from './types/annotation';
 import { useAnnotationDocument } from './hooks/useAnnotationDocument';
 import { useImageLoader } from './hooks/useImageLoader';
 import { useViewport } from './hooks/useViewport';
@@ -34,6 +34,7 @@ export function App() {
     setActiveStrokeWidth,
     selectAnnotation,
     addAnnotation,
+    updateAnnotation,
     deleteAnnotation,
   } = useAnnotationDocument();
 
@@ -52,9 +53,7 @@ export function App() {
 
   const handleImageLoaded = useCallback(
     (loadedImg: LoadedImage) => {
-      // Replacing image resets document state, selection, and history
       setImage(loadedImg);
-      // Reset viewport to fit newly loaded image within workspace
       if (workspaceDimsRef.current.width > 0 && workspaceDimsRef.current.height > 0) {
         fitToScreen(loadedImg, workspaceDimsRef.current);
       }
@@ -70,7 +69,6 @@ export function App() {
     clearError,
   } = useImageLoader({ onImageLoaded: handleImageLoaded });
 
-  // Safe wrapper for file loading that asks for confirmation if annotations would be discarded
   const requestLoadFile = useCallback(
     (file: File) => {
       clearError();
@@ -83,7 +81,6 @@ export function App() {
     [document.annotations.length, loadFile, clearError]
   );
 
-  // Safe wrapper for sample loading
   const requestLoadSample = useCallback(() => {
     clearError();
     if (document.annotations.length > 0) {
@@ -119,11 +116,38 @@ export function App() {
     [document.image, fitToScreen]
   );
 
-  const handleCommitRectangle = useCallback(
-    (annotation: RectangleAnnotation) => {
+  const handleCommitAnnotation = useCallback(
+    (annotation: Annotation) => {
       addAnnotation(annotation);
     },
     [addAnnotation]
+  );
+
+  // Style change handlers that apply to selected annotation if present, or set future defaults
+  const handleSelectColor = useCallback(
+    (color: string) => {
+      setActiveColor(color);
+      if (document.selectedAnnotationId) {
+        const selected = document.annotations.find((a) => a.id === document.selectedAnnotationId);
+        if (selected) {
+          updateAnnotation({ ...selected, color });
+        }
+      }
+    },
+    [document.annotations, document.selectedAnnotationId, setActiveColor, updateAnnotation]
+  );
+
+  const handleSelectStrokeWidth = useCallback(
+    (strokeWidth: number) => {
+      setActiveStrokeWidth(strokeWidth);
+      if (document.selectedAnnotationId) {
+        const selected = document.annotations.find((a) => a.id === document.selectedAnnotationId);
+        if (selected) {
+          updateAnnotation({ ...selected, strokeWidth });
+        }
+      }
+    },
+    [document.annotations, document.selectedAnnotationId, setActiveStrokeWidth, updateAnnotation]
   );
 
   const handleExport = useCallback(async () => {
@@ -145,10 +169,14 @@ export function App() {
     }
   }, [document]);
 
-  // Global Keyboard Shortcuts (Undo, Redo, Zoom, Tool switching, Deletion)
+  // Global Keyboard Shortcuts (Undo, Redo, Zoom, Tool switching, Deletion, Escape)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) {
+      const target = e.target as HTMLElement | null;
+      if (
+        target?.isContentEditable ||
+        ['INPUT', 'TEXTAREA', 'SELECT'].includes(target?.tagName || '')
+      ) {
         return;
       }
 
@@ -170,14 +198,21 @@ export function App() {
       } else if (e.key === '0') {
         e.preventDefault();
         resetZoom();
-      } else if (e.key.toLowerCase() === 'r') {
-        setActiveTool('rectangle');
       } else if (e.key.toLowerCase() === 'v') {
         setActiveTool('select');
+      } else if (e.key.toLowerCase() === 'r') {
+        setActiveTool('rectangle');
+      } else if (e.key.toLowerCase() === 'a') {
+        setActiveTool('arrow');
       } else if (e.key === 'Delete' || e.key === 'Backspace') {
         if (document.selectedAnnotationId) {
           e.preventDefault();
           deleteAnnotation(document.selectedAnnotationId);
+        }
+      } else if (e.key === 'Escape') {
+        if (document.selectedAnnotationId) {
+          e.preventDefault();
+          selectAnnotation(null);
         }
       }
     };
@@ -193,6 +228,7 @@ export function App() {
     zoomOut,
     resetZoom,
     setActiveTool,
+    selectAnnotation,
     document.selectedAnnotationId,
     deleteAnnotation,
   ]);
@@ -226,10 +262,11 @@ export function App() {
           onUploadFile={requestLoadFile}
           onTrySample={requestLoadSample}
           onSelectTool={setActiveTool}
-          onSelectColor={setActiveColor}
-          onSelectStrokeWidth={setActiveStrokeWidth}
+          onSelectColor={handleSelectColor}
+          onSelectStrokeWidth={handleSelectStrokeWidth}
           onSelectAnnotation={selectAnnotation}
-          onCommitAnnotation={handleCommitRectangle}
+          onCommitAnnotation={handleCommitAnnotation}
+          onUpdateAnnotation={updateAnnotation}
           onFitToScreen={handleFitToScreen}
           isLoading={isLoading}
         />
